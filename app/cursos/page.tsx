@@ -11,10 +11,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import CalendarWidget from '@/app/CalendarWidget';
 
-// Imports de configuración
 import api from '@/lib/axios';
 import { getStorageUrl } from '@/lib/utils';
 import ThemeDynamicProvider from '@/components/providers/ThemeDynamicProvider';
+
+import { sanitizeHTML, sanitizeText, sanitizeQueryParam } from '@/lib/security';
 
 // ==================== TIPOS ====================
 interface ColorInstitucion {
@@ -64,25 +65,23 @@ function CursosContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // ✅ Estados para paginación
-  const paginaActual = Number(searchParams.get('pagina')) || 1;
-  const itemsPorPagina = 4; // 4 cursos por página (2 columnas x 2 filas)
   
-  // Estado de filtros
-  const [tipoActivo, setTipoActivo] = useState<string>(searchParams.get('tipo') || 'TODOS');
+  const paginaActual = Number(searchParams.get('pagina')) || 1;
+  const itemsPorPagina = 4;
+  
+
+  const [tipoActivo, setTipoActivo] = useState<string>(
+    sanitizeQueryParam(searchParams.get('tipo')) || 'TODOS'
+  );
   const [busqueda, setBusqueda] = useState('');
   
-  // Estado de datos
   const [cursos, setCursos] = useState<Curso[]>([]);
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [institucion, setInstitucion] = useState<InstitucionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // ✅ Estado para tipos de cursos disponibles (Dinámico)
-  const [tiposConCursos, setTiposConCursos] = useState<string[]>([]);
 
-  // Colores dinámicos
+  const [tiposConCursos, setTiposConCursos] = useState<string[]>([]);
   const colores = institucion?.colorinstitucion?.[0];
   const primaryColor = colores?.color_primario || '#04246C';
   const secondaryColor = colores?.color_secundario || '#FC0102';
@@ -103,21 +102,22 @@ function CursosContent() {
         setCursos(cursosData);
         setEventos(eventosData);
 
-        // ✅ Detectar qué tipos de cursos existen realmente en la API
+        //  Detectar qué tipos de cursos existen realmente en la API
         const tiposUnicos = new Set<string>();
         cursosData.forEach((curso) => {
           const tipo = curso.tipo_curso_otro?.tipo_conv_curso_nombre?.toUpperCase();
           if (tipo) tiposUnicos.add(tipo);
         });
         setTiposConCursos(Array.from(tiposUnicos));
-
-        // Fetch colores de institución
         const instRes = await api.get(`/institucionesPrincipal/${institucionId}`);
         setInstitucion(instRes.data.Descripcion);
 
       } catch (err: any) {
-        console.error('❌ Error cargando cursos:', err);
-        setError('No se pudieron cargar los cursos. Intenta más tarde.');
+        console.error(' Error cargando cursos:', err);
+  
+        setError(process.env.NODE_ENV === 'production' 
+          ? 'No se pudieron cargar los cursos.' 
+          : 'No se pudieron cargar los cursos. Intenta más tarde.');
       } finally {
         setLoading(false);
       }
@@ -133,7 +133,7 @@ function CursosContent() {
     if (currentTipo !== tipoActivo) {
       const params = new URLSearchParams(searchParams);
       if (tipoActivo !== 'TODOS') {
-        params.set('tipo', tipoActivo);
+        params.set('tipo', sanitizeQueryParam(tipoActivo)); 
       } else {
         params.delete('tipo');
       }
@@ -141,7 +141,6 @@ function CursosContent() {
     }
   }, [tipoActivo, router, searchParams]);
 
-  // ✅ Filtrar cursos por tipo + búsqueda
   const cursosFiltrados = cursos.filter((curso) => {
     if (tipoActivo !== 'TODOS') {
       const cursoTipo = curso.tipo_curso_otro?.tipo_conv_curso_nombre?.toUpperCase();
@@ -149,7 +148,8 @@ function CursosContent() {
     }
     
     if (busqueda) {
-      const query = busqueda.toLowerCase();
+
+      const query = sanitizeText(busqueda.toLowerCase());
       const coincideTitulo = curso.det_titulo.toLowerCase().includes(query);
       const coincideDescripcion = curso.det_descripcion?.toLowerCase().includes(query);
       if (!coincideTitulo && !coincideDescripcion) return false;
@@ -158,7 +158,7 @@ function CursosContent() {
     return true;
   });
 
-  // ✅ Cálculos de paginación
+
   const totalPaginas = Math.ceil(cursosFiltrados.length / itemsPorPagina);
   const inicio = (paginaActual - 1) * itemsPorPagina;
   const fin = inicio + itemsPorPagina;
@@ -196,7 +196,6 @@ function CursosContent() {
     return { bg: `${primaryColor}10`, border: `${primaryColor}20`, text: primaryColor };
   };
 
-  // ==================== RENDER LOADING ====================
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen bg-background">
@@ -221,7 +220,6 @@ function CursosContent() {
     );
   }
 
-  // ==================== RENDER ERROR ====================
   if (error) {
     return (
       <div className="flex flex-col min-h-screen bg-background items-center justify-center p-8">
@@ -241,14 +239,12 @@ function CursosContent() {
     );
   }
 
-  // ==================== RENDER PRINCIPAL ====================
   return (
     <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor, tertiary: tertiaryColor }}>
       <div className="flex flex-col min-h-screen bg-background text-foreground">
-        
-{/* 🎨 Header Elegante con Degradado */}
+
 <section className="relative py-20 overflow-hidden">
-  {/* Fondo con degradado elegante */}
+
   <div 
     className="absolute inset-0"
     style={{ 
@@ -262,8 +258,7 @@ function CursosContent() {
       ` 
     }}
   />
-  
-  {/* Overlay de patrón sutil */}
+
   <div className="absolute inset-0 opacity-10">
     <div 
       className="absolute inset-0"
@@ -273,8 +268,7 @@ function CursosContent() {
       }}
     />
   </div>
-  
-  {/* Orbes decorativos para profundidad */}
+
   <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
   <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
   
@@ -319,12 +313,10 @@ function CursosContent() {
   </div>
 </section>
 
-        {/* 🔍 Filtros y Búsqueda */}
         <section className="bg-background border-b border-border py-6 sticky top-16 z-40 shadow-sm">
           <div className="max-w-6xl mx-auto px-4">
             <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-              
-              {/* Filtros Dinámicos */}
+
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setTipoActivo('TODOS')}
@@ -373,7 +365,7 @@ function CursosContent() {
                   type="text"
                   placeholder="Buscar cursos..."
                   value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
+                  onChange={(e) => setBusqueda(sanitizeText(e.target.value, 100))} 
                   className="w-full pl-10 pr-4 py-2 rounded-lg border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                   style={{ borderColor: `${primaryColor}30` }}
                 />
@@ -382,7 +374,7 @@ function CursosContent() {
           </div>
         </section>
 
-        {/* 📚 Contenido: Grid + Calendario */}
+        {/* Contenido: Grid + Calendario */}
         <section className="py-20 bg-background">
           <div className="max-w-6xl mx-auto px-4">
             <div className="grid lg:grid-cols-3 gap-8">
@@ -446,20 +438,21 @@ function CursosContent() {
                                 )}
                               </div>
 
-                              {/* Badge Tipo */}
                               <div className="inline-block px-3 py-1 rounded-full text-xs font-semibold mb-4" style={{ backgroundColor: colors.bg, color: colors.text }}>
                                 {tipoCurso.charAt(0) + tipoCurso.slice(1).toLowerCase()}
                               </div>
 
-                              {/* Título */}
+  
                               <h3 className="text-lg font-bold mb-2 group-hover:text-primary transition-colors line-clamp-2">
-                                {curso.det_titulo}
+                                {sanitizeText(curso.det_titulo, 100)} 
                               </h3>
-                              
-                              {/* Descripción */}
-                              <p className="text-muted-foreground text-sm mb-4 line-clamp-2 flex-1" dangerouslySetInnerHTML={{ __html: curso.det_descripcion || '' }} />
 
-                              {/* Info Adicional */}
+                              <p className="text-muted-foreground text-sm mb-4 line-clamp-2 flex-1" 
+                                dangerouslySetInnerHTML={{ 
+                                  __html: sanitizeHTML(curso.det_descripcion || '') 
+                                }} 
+                              />
+
                               <div className="space-y-2 pt-4 border-t border-border">
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                   <Clock className="w-3 h-3" style={{ color: colors.text }} />
@@ -489,10 +482,9 @@ function CursosContent() {
                       })}
                     </div>
 
-                    {/* ✅ Paginación */}
+                    {/* Paginación */}
                     {totalPaginas > 1 && (
                       <div className="flex items-center justify-center gap-2 mt-8">
-                        {/* Botón Anterior */}
                         <button
                           onClick={() => cambiarPagina(paginaActual - 1)}
                           disabled={paginaActual === 1}
@@ -501,8 +493,6 @@ function CursosContent() {
                         >
                           <ChevronLeft className="w-5 h-5" />
                         </button>
-                        
-                        {/* Números de página */}
                         {Array.from({ length: totalPaginas }, (_, i) => i + 1).map((pagina) => (
                           <button
                             key={pagina}
@@ -517,8 +507,7 @@ function CursosContent() {
                             {pagina}
                           </button>
                         ))}
-                        
-                        {/* Botón Siguiente */}
+
                         <button
                           onClick={() => cambiarPagina(paginaActual + 1)}
                           disabled={paginaActual === totalPaginas}
@@ -538,7 +527,6 @@ function CursosContent() {
                 )}
               </div>
 
-              {/* Columna Derecha: Sidebar Sticky */}
               <div className="lg:col-span-1">
                 <div className="sticky top-32 space-y-8">
                   
@@ -554,8 +542,6 @@ function CursosContent() {
                       <CalendarWidget colores={colores} eventos={eventos} />
                     </div>
                   </div>
-
-                  {/* Lista de Próximos Eventos */}
                   {eventos.length > 0 && (
                     <div>
                       <h3 className="font-bold mb-4 text-lg px-2">Próximos Eventos</h3>
@@ -563,7 +549,7 @@ function CursosContent() {
                         {eventos.slice(0, 3).map((evento) => (
                           <div key={evento.evento_id} className="p-4 rounded-lg border hover:shadow-md transition-shadow bg-card group cursor-pointer">
                             <h4 className="font-semibold text-sm mb-2 line-clamp-2 group-hover:text-primary transition-colors">
-                              {evento.evento_titulo}
+                              {sanitizeText(evento.evento_titulo, 80)} 
                             </h4>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               <CalendarIcon className="w-3 h-3" />
@@ -572,7 +558,7 @@ function CursosContent() {
                             {evento.evento_lugar && (
                               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                                 <Users className="w-3 h-3" />
-                                <span className="line-clamp-1">{evento.evento_lugar}</span>
+                                <span className="line-clamp-1">{sanitizeText(evento.evento_lugar, 50)}</span>
                               </div>
                             )}
                           </div>

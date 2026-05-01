@@ -1,7 +1,7 @@
 // app/informacion/page.tsx
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { 
   Target, Eye, Award, Users, BookOpen, TrendingUp,
@@ -13,6 +13,7 @@ import Image from 'next/image';
 
 import api from '@/lib/axios';
 import { getStorageUrl } from '@/lib/utils';
+import { sanitizeHTML } from '@/lib/sanitize';
 import ThemeDynamicProvider from '@/components/providers/ThemeDynamicProvider';
 
 // ==================== TIPOS ====================
@@ -58,27 +59,62 @@ interface UbicacionData {
 
 type SeccionInfo = 'mision-vision' | 'autoridades' | 'historia' | 'ubicacion';
 
+const SECCIONES_VALIDAS: SeccionInfo[] = ['mision-vision', 'autoridades', 'historia', 'ubicacion'];
+
+const isValidSeccion = (seccion: string | null): seccion is SeccionInfo => {
+  return seccion !== null && (SECCIONES_VALIDAS as string[]).includes(seccion);
+};
+
+const isValidExternalUrl = (url: string | undefined): boolean => {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const validProtocol = ['https:'].includes(parsed.protocol);
+    const safeDomains = [
+      'facebook.com', 'www.facebook.com',
+      'twitter.com', 'www.twitter.com', 'x.com', 'www.x.com',
+      'linkedin.com', 'www.linkedin.com',
+      'maps.google.com', 'www.google.com', 'google.com',
+      'upea.bo', 'localhost', '127.0.0.1'
+    ];
+    const safeDomain = safeDomains.some(domain => parsed.hostname.includes(domain));
+    const safePath = !parsed.pathname.includes('<') && !parsed.pathname.includes('>') && !parsed.pathname.includes('javascript:');
+    return validProtocol && safeDomain && safePath;
+  } catch {
+    return false;
+  }
+};
+
+const isValidHexColor = (color: string | undefined): boolean => {
+  if (!color) return false;
+  return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color);
+};
+
+const sanitizeTextField = (text: string | undefined, maxLength = 1000): string => {
+  if (!text) return '';
+  return sanitizeHTML(text).trim().slice(0, maxLength);
+};
+
 // ==================== COMPONENTE PRINCIPAL ====================
 function InformacionContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // Sección activa (por defecto: mision-vision)
-  const [seccionActiva, setSeccionActiva] = useState<SeccionInfo>(
-    (searchParams.get('section') as SeccionInfo) || 'mision-vision'
-  );
+  const initialSeccion = useMemo(() => {
+    const raw = searchParams.get('section');
+    return isValidSeccion(raw) ? raw : 'mision-vision';
+  }, []); 
   
-  // Estados de datos
+  const [seccionActiva, setSeccionActiva] = useState<SeccionInfo>(initialSeccion);
+  
   const [institucion, setInstitucion] = useState<InstitucionData | null>(null);
   const [autoridades, setAutoridades] = useState<Autoridad[]>([]);
   const [ubicacion, setUbicacion] = useState<UbicacionData | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Colores dinámicos
   const [primaryColor, setPrimaryColor] = useState('#04246C');
   const [secondaryColor, setSecondaryColor] = useState('#FC0102');
 
-  // Opciones del menú
   const secciones: Array<{ id: SeccionInfo; label: string; icon: any }> = [
     { id: 'mision-vision', label: 'Misión y Visión', icon: Target },
     { id: 'autoridades', label: 'Autoridades', icon: Users },
@@ -88,44 +124,79 @@ function InformacionContent() {
 
   // ==================== FETCH DATOS ====================
   useEffect(() => {
+    let isMounted = true;
+    
     const fetchData = async () => {
       try {
         setLoading(true);
-        const institucionId = process.env.NEXT_PUBLIC_INSTITUCION_ID || 12;
+        const institucionId = Number(process.env.NEXT_PUBLIC_INSTITUCION_ID) || 12;
         
         const [instRes, contenidoRes] = await Promise.all([
           api.get(`/institucionesPrincipal/${institucionId}`),
           api.get(`/institucion/${institucionId}/contenido`)
         ]);
 
+        if (!isMounted) return;
+
         const instData = instRes.data.Descripcion;
-        setInstitucion(instData);
-        setAutoridades(contenidoRes.data.autoridad || []);
-        setUbicacion(contenidoRes.data.ubicacion?.[0] || null);
+        
+        setInstitucion({
+          ...instData,
+          institucion_mision: sanitizeTextField(instData.institucion_mision),
+          institucion_vision: sanitizeTextField(instData.institucion_vision),
+          institucion_historia: sanitizeTextField(instData.institucion_historia),
+          institucion_objetivos: sanitizeTextField(instData.institucion_objetivos),
+          institucion_direccion: sanitizeTextField(instData.institucion_direccion, 300),
+          institucion_correo1: instData.institucion_correo1?.replace(/[<>\"'&]/g, ''),
+        });
+        
+        const autoridadesSanitizadas = (contenidoRes.data.autoridad || []).map((a: any) => ({
+          ...a,
+          nombre_autoridad: sanitizeTextField(a.nombre_autoridad, 100),
+          cargo_autoridad: sanitizeTextField(a.cargo_autoridad, 100),
+          facebook_autoridad: isValidExternalUrl(a.facebook_autoridad) ? a.facebook_autoridad : undefined,
+          twiter_autoridad: isValidExternalUrl(a.twiter_autoridad) ? a.twiter_autoridad : undefined,
+        }));
+        setAutoridades(autoridadesSanitizadas);
+        
+        const ubicacionData = contenidoRes.data.ubicacion?.[0];
+        setUbicacion(ubicacionData ? {
+          ...ubicacionData,
+          ubicacion_titulo: sanitizeTextField(ubicacionData.ubicacion_titulo, 100),
+          ubicacion_descripcion: sanitizeTextField(ubicacionData.ubicacion_descripcion),
+          ubicacion_latitud: ubicacionData.ubicacion_latitud?.replace(/[<>\"'&]/g, ''),
+          ubicacion_longitud: ubicacionData.ubicacion_longitud?.replace(/[<>\"'&]/g, ''),
+        } : null);
         
         if (instData.colorinstitucion?.[0]) {
-          setPrimaryColor(instData.colorinstitucion[0].color_primario);
-          setSecondaryColor(instData.colorinstitucion[0].color_secundario);
+          const colors = instData.colorinstitucion[0];
+          setPrimaryColor(isValidHexColor(colors.color_primario) ? colors.color_primario : '#04246C');
+          setSecondaryColor(isValidHexColor(colors.color_secundario) ? colors.color_secundario : '#FC0102');
         }
       } catch (error) {
-        console.error('❌ Error cargando información:', error);
+        if (process.env.NODE_ENV === 'development') {
+          console.error(' Error cargando datos:', error);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     fetchData();
-  }, []);
+    
+    return () => { isMounted = false; };
+  }, []); 
+  useEffect(() => {
 
-useEffect(() => {
-  const currentSection = searchParams.get('section');
-  
-  if (currentSection !== seccionActiva) {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('section', seccionActiva);
-    router.replace(`/informacion?${params.toString()}`);
-  }
-}, [seccionActiva]);
+    const currentSection = searchParams.get('section');
+
+    if (currentSection !== seccionActiva) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('section', seccionActiva);
+      router.replace(`/informacion?${params.toString()}`, { scroll: false });
+    }
+
+  }, [seccionActiva, router]);
 
   // ==================== RENDER LOADING ====================
   if (loading) {
@@ -159,100 +230,69 @@ useEffect(() => {
     <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor }}>
       <div className="min-h-screen bg-background">
         
-{/* 🎨 Header Elegante con Degradado */}
-<section className="relative py-20 overflow-hidden">
-  {/* Fondo con degradado elegante */}
-  <div 
-    className="absolute inset-0"
-    style={{ 
-      background: `
-        linear-gradient(135deg, 
-          ${primaryColor} 0%, 
-          ${primaryColor}cc 25%, 
-          ${secondaryColor}99 60%, 
-          ${secondaryColor}44 100%
-        )
-      ` 
-    }}
-  />
-  
-  {/* Overlay de patrón sutil */}
-  <div className="absolute inset-0 opacity-10">
-    <div 
-      className="absolute inset-0"
-      style={{
-        backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
-        backgroundSize: '40px 40px'
-      }}
-    />
-  </div>
-  
-  {/* Orbes decorativos para profundidad */}
-  <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-  <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
-  
-  {/* Línea decorativa inferior */}
-  <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-  
-  {/* Contenido */}
-  <div className="relative max-w-6xl mx-auto px-4">
-    <Link 
-      href="/" 
-      className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-8 transition-colors group"
-    >
-      <div className="p-2 rounded-full bg-white/10 group-hover:bg-white/20 transition-colors">
-        <ArrowLeft className="w-4 h-4" />
-      </div>
-      <span className="font-medium">Volver al inicio</span>
-    </Link>
-    
-    <div className="flex items-center gap-4 mb-6">
-      <div className="p-4 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20">
-        <Target className="w-10 h-10 text-white" />
-      </div>
-      <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white">
-        Información Institucional
-      </h1>
-    </div>
-    
-    <p className="text-lg md:text-xl text-white/90 max-w-3xl leading-relaxed">
-      Conoce nuestra misión, visión, historia, autoridades y ubicación de{' '}
-      <span className="font-semibold text-white">
-        {institucion?.institucion_nombre || 'nuestra institución'}
-      </span>
-    </p>
-  </div>
-</section>
-      {/*  Navegación de Pestañas - Debajo del header */}
-      <div className="bg-background border-b border-border sticky top-20 z-30 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4">
-          <nav className="flex flex-wrap gap-2 py-4">
-            {secciones.map((seccion) => {
-              const isActive = seccionActiva === seccion.id;
-              return (
-                <button
-                  key={seccion.id}
-                  onClick={() => setSeccionActiva(seccion.id)}
-                  className={`flex items-center gap-2 px-5 py-3 rounded-full font-medium text-sm transition-all ${
-                    isActive 
-                      ? 'text-white shadow-lg' 
-                      : 'bg-muted text-foreground hover:bg-muted/80'
-                  }`}
-                  style={isActive ? { backgroundColor: primaryColor } : {}}
-                >
-                  <seccion.icon className="w-4 h-4" />
-                  {seccion.label}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-      </div>
+        {/* Header */}
+        <section className="relative py-20 overflow-hidden">
+          <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}cc 25%, ${secondaryColor}99 60%, ${secondaryColor}44 100%)` }} />
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute inset-0" style={{ backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`, backgroundSize: '40px 40px' }} />
+          </div>
+          <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+          <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+          <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+          
+          <div className="relative max-w-6xl mx-auto px-4">
+            <Link href="/" className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-8 transition-colors group">
+              <div className="p-2 rounded-full bg-white/10 group-hover:bg-white/20 transition-colors">
+                <ArrowLeft className="w-4 h-4" />
+              </div>
+              <span className="font-medium">Volver al inicio</span>
+            </Link>
+            
+            <div className="flex items-center gap-4 mb-6">
+              <div className="p-4 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20">
+                <Target className="w-10 h-10 text-white" />
+              </div>
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white">Información Institucional</h1>
+            </div>
+            
+            <p className="text-lg md:text-xl text-white/90 max-w-3xl leading-relaxed">
+              Conoce nuestra misión, visión, historia, autoridades y ubicación de{' '}
+              <span className="font-semibold text-white">{institucion?.institucion_nombre || 'nuestra institución'}</span>
+            </p>
+          </div>
+        </section>
 
-      {/* Contenido de la sección activa */}
-      <div className="max-w-6xl mx-auto px-4 py-12">
-        {renderSeccion()}
-      </div>
+        {/* Navegación de Pestañas */}
+        <div className="bg-background border-b border-border sticky top-20 z-30 shadow-sm">
+          <div className="max-w-6xl mx-auto px-4">
+            <nav className="flex flex-wrap gap-2 py-4" role="tablist" aria-label="Secciones de información">
+              {secciones.map((seccion) => {
+                const isActive = seccionActiva === seccion.id;
+                return (
+                  <button
+                    key={seccion.id}
+                    onClick={() => setSeccionActiva(seccion.id)}
+                    className={`flex items-center gap-2 px-5 py-3 rounded-full font-medium text-sm transition-all ${
+                      isActive ? 'text-white shadow-lg' : 'bg-muted text-foreground hover:bg-muted/80'
+                    }`}
+                    style={isActive ? { backgroundColor: primaryColor } : {}}
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-controls={`panel-${seccion.id}`}
+                  >
+                    <seccion.icon className="w-4 h-4" aria-hidden="true" />
+                    {seccion.label}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="max-w-6xl mx-auto px-4 py-12">
+          {renderSeccion()}
+        </div>
 
       </div>
     </ThemeDynamicProvider>
@@ -268,60 +308,32 @@ function SeccionMisionVision({ institucion, primaryColor, secondaryColor }: {
   return (
     <div className="space-y-8">
       <div className="grid md:grid-cols-2 gap-8">
-        
-        {/* Misión */}
         <div className="bg-card rounded-2xl p-8 border shadow-lg hover:shadow-xl transition-shadow">
-          <div 
-            className="w-16 h-16 rounded-full flex items-center justify-center mb-6"
-            style={{ backgroundColor: `${primaryColor}15` }}
-          >
-            <Target className="w-8 h-8" style={{ color: primaryColor }} />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mb-6" style={{ backgroundColor: `${primaryColor}15` }}>
+            <Target className="w-8 h-8" style={{ color: primaryColor }} aria-hidden="true" />
           </div>
           <h2 className="text-2xl font-bold mb-4" style={{ color: primaryColor }}>Misión</h2>
-          <div 
-            className="text-muted-foreground leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: institucion?.institucion_mision || '<p>Formar profesionales competentes con enfoque holístico en las áreas clínicas, comunitarias, administrativas, docencia e investigación.</p>' }}
-          />
+          <div className="text-muted-foreground leading-relaxed" dangerouslySetInnerHTML={{ __html: sanitizeHTML(institucion?.institucion_mision || '<p>Formar profesionales competentes con enfoque holístico.</p>') }} />
         </div>
-
-        {/* Visión */}
         <div className="bg-card rounded-2xl p-8 border shadow-lg hover:shadow-xl transition-shadow">
-          <div 
-            className="w-16 h-16 rounded-full flex items-center justify-center mb-6"
-            style={{ backgroundColor: `${secondaryColor}15` }}
-          >
-            <Eye className="w-8 h-8" style={{ color: secondaryColor }} />
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mb-6" style={{ backgroundColor: `${secondaryColor}15` }}>
+            <Eye className="w-8 h-8" style={{ color: secondaryColor }} aria-hidden="true" />
           </div>
           <h2 className="text-2xl font-bold mb-4" style={{ color: secondaryColor }}>Visión</h2>
-          <div 
-            className="text-muted-foreground leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: institucion?.institucion_vision || '<p>Ser referentes en educación superior con profesionales que respondan a las exigencias de la sociedad, manteniendo la más alta calidad educativa.</p>' }}
-          />
+          <div className="text-muted-foreground leading-relaxed" dangerouslySetInnerHTML={{ __html: sanitizeHTML(institucion?.institucion_vision || '<p>Ser referentes en educación superior.</p>') }} />
         </div>
       </div>
-
-      {/* Objetivos */}
       {institucion?.institucion_objetivos && (
         <div className="bg-card rounded-2xl p-8 border shadow-lg">
           <div className="flex items-center gap-3 mb-6">
-            <div 
-              className="w-12 h-12 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: `${primaryColor}15` }}
-            >
-              <Award className="w-6 h-6" style={{ color: primaryColor }} />
+            <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `${primaryColor}15` }}>
+              <Award className="w-6 h-6" style={{ color: primaryColor }} aria-hidden="true" />
             </div>
-            <h2 className="text-2xl font-bold" style={{ color: primaryColor }}>
-              Objetivos Institucionales
-            </h2>
+            <h2 className="text-2xl font-bold" style={{ color: primaryColor }}>Objetivos Institucionales</h2>
           </div>
-          <div 
-            className="text-muted-foreground leading-relaxed space-y-4"
-            dangerouslySetInnerHTML={{ __html: institucion.institucion_objetivos }}
-          />
+          <div className="text-muted-foreground leading-relaxed space-y-4" dangerouslySetInnerHTML={{ __html: sanitizeHTML(institucion.institucion_objetivos) }} />
         </div>
       )}
-
-      {/* Valores */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 pt-8">
         {[
           { icon: Users, title: 'Compromiso', desc: 'Dedicación total a la excelencia educativa' },
@@ -330,7 +342,7 @@ function SeccionMisionVision({ institucion, primaryColor, secondaryColor }: {
           { icon: TrendingUp, title: 'Crecimiento', desc: 'Desarrollo continuo y mejora' },
         ].map((item, idx) => (
           <div key={idx} className="text-center p-6 rounded-xl bg-muted/50 border">
-            <item.icon className="w-10 h-10 mx-auto mb-3" style={{ color: primaryColor }} />
+            <item.icon className="w-10 h-10 mx-auto mb-3" style={{ color: primaryColor }} aria-hidden="true" />
             <h3 className="font-bold mb-2">{item.title}</h3>
             <p className="text-sm text-muted-foreground">{item.desc}</p>
           </div>
@@ -350,66 +362,45 @@ function SeccionAutoridades({ autoridades, primaryColor }: {
       {autoridades.length > 0 ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
           {autoridades.map((autoridad) => (
-            <div 
-              key={autoridad.id_autoridad}
-              className="bg-card rounded-2xl overflow-hidden border shadow-lg hover:shadow-2xl transition-all hover:-translate-y-1"
-            >
-              {/* Foto */}
+            <div key={autoridad.id_autoridad} className="bg-card rounded-2xl overflow-hidden border shadow-lg hover:shadow-2xl transition-all hover:-translate-y-1">
               <div className="relative h-64 bg-muted">
                 {autoridad.foto_autoridad ? (
                   <Image
                     src={getStorageUrl(autoridad.foto_autoridad)}
                     alt={autoridad.nombre_autoridad}
                     fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                     className="object-cover"
+                    loading="lazy"
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
-                    <User className="w-20 h-20 text-muted-foreground" />
+                    <User className="w-20 h-20 text-muted-foreground" aria-hidden="true" />
                   </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent" />
               </div>
-
-              {/* Info */}
               <div className="p-6">
                 <h3 className="text-xl font-bold mb-2">{autoridad.nombre_autoridad}</h3>
-                <p 
-                  className="text-sm font-medium mb-4"
-                  style={{ color: primaryColor }}
-                >
+                <p className="text-sm font-medium mb-4" style={{ color: isValidHexColor(primaryColor) ? primaryColor : '#04246C' }}>
                   {autoridad.cargo_autoridad}
                 </p>
-
-                {/* Contacto */}
                 <div className="space-y-2 pt-4 border-t">
                   {autoridad.celular_autoridad && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Phone className="w-4 h-4" />
+                      <Phone className="w-4 h-4" style={{ color: primaryColor }} aria-hidden="true" />
                       <span>{autoridad.celular_autoridad}</span>
                     </div>
                   )}
                   {(autoridad.facebook_autoridad || autoridad.twiter_autoridad) && (
                     <div className="flex gap-2 pt-2">
-                      {autoridad.facebook_autoridad && (
-                        <a 
-                          href={autoridad.facebook_autoridad}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-full bg-muted hover:bg-primary/10 transition-colors"
-                          style={{ color: primaryColor }}
-                        >
+                      {autoridad.facebook_autoridad && isValidExternalUrl(autoridad.facebook_autoridad) && (
+                        <a href={autoridad.facebook_autoridad} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full bg-muted hover:bg-primary/10 transition-colors" style={{ color: primaryColor }} aria-label={`Facebook de ${autoridad.nombre_autoridad}`}>
                           <Facebook className="w-4 h-4" />
                         </a>
                       )}
-                      {autoridad.twiter_autoridad && (
-                        <a 
-                          href={autoridad.twiter_autoridad}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 rounded-full bg-muted hover:bg-primary/10 transition-colors"
-                          style={{ color: primaryColor }}
-                        >
+                      {autoridad.twiter_autoridad && isValidExternalUrl(autoridad.twiter_autoridad) && (
+                        <a href={autoridad.twiter_autoridad} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full bg-muted hover:bg-primary/10 transition-colors" style={{ color: primaryColor }} aria-label={`Twitter de ${autoridad.nombre_autoridad}`}>
                           <Linkedin className="w-4 h-4" />
                         </a>
                       )}
@@ -422,11 +413,9 @@ function SeccionAutoridades({ autoridades, primaryColor }: {
         </div>
       ) : (
         <div className="text-center py-20">
-          <User className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+          <User className="w-16 h-16 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
           <h3 className="text-xl font-bold mb-2">No hay autoridades registradas</h3>
-          <p className="text-muted-foreground">
-            La información de autoridades estará disponible próximamente
-          </p>
+          <p className="text-muted-foreground">La información de autoridades estará disponible próximamente</p>
         </div>
       )}
     </div>
@@ -439,113 +428,50 @@ function SeccionHistoria({ institucion, primaryColor, secondaryColor }: {
   primaryColor: string;
   secondaryColor: string;
 }) {
-  // Hitos históricos de ejemplo
-  const hitos = [
-    { year: '1990', title: 'Fundación', desc: 'Creación de la institución', icon: Calendar },
-    { year: '2000', title: 'Acreditación', desc: 'Primera acreditación nacional', icon: Award },
-    { year: '2010', title: 'Expansión', desc: 'Ampliación de infraestructura', icon: TrendingUp },
-    { year: '2020', title: 'Innovación', desc: 'Implementación de tecnologías educativas', icon: BookOpen },
-  ];
-
   return (
     <div className="space-y-12">
-      
-      {/* Historia principal */}
       <div className="bg-card rounded-2xl p-8 border shadow-lg">
-        <h2 className="text-2xl font-bold mb-4" style={{ color: primaryColor }}>
-          {institucion?.institucion_nombre} - {institucion?.institucion_iniciales}
-        </h2>
+        <h2 className="text-2xl font-bold mb-4" style={{ color: primaryColor }}>{institucion?.institucion_nombre} - {institucion?.institucion_iniciales}</h2>
         {institucion?.institucion_historia ? (
-          <div 
-            className="text-muted-foreground leading-relaxed space-y-4"
-            dangerouslySetInnerHTML={{ __html: institucion.institucion_historia }}
-          />
+          <div className="text-muted-foreground leading-relaxed space-y-4" dangerouslySetInnerHTML={{ __html: sanitizeHTML(institucion.institucion_historia) }} />
         ) : (
           <>
-            <p className="text-muted-foreground leading-relaxed mb-4">
-              Somos una institución comprometida con la excelencia académica y la formación integral 
-              de nuestros estudiantes. A lo largo de los años, hemos trabajado incansablemente para 
-              ofrecer una educación de calidad que responda a las necesidades de la sociedad.
-            </p>
-            <p className="text-muted-foreground leading-relaxed">
-              Nuestra trayectoria se caracteriza por la innovación pedagógica, el compromiso social 
-              y la búsqueda constante de la mejora continua en todos nuestros procesos académicos 
-              y administrativos.
-            </p>
+            <p className="text-muted-foreground leading-relaxed mb-4">Somos una institución comprometida con la excelencia académica.</p>
+            <p className="text-muted-foreground leading-relaxed">Nuestra trayectoria se caracteriza por la innovación pedagógica.</p>
           </>
         )}
       </div>
-
-{/* Objetivos Estratégicos - Datos reales de la API */}
-{institucion?.institucion_objetivos ? (
-  <div className="bg-card rounded-2xl p-8 border shadow-lg">
-    <div className="flex items-center gap-3 mb-6">
-      <div 
-        className="w-12 h-12 rounded-full flex items-center justify-center"
-        style={{ backgroundColor: `${primaryColor}15` }}
-      >
-        <Target className="w-6 h-6" style={{ color: primaryColor }} />
-      </div>
-      <h2 className="text-2xl font-bold" style={{ color: primaryColor }}>
-        Objetivos Estratégicos
-      </h2>
-    </div>
-    <div 
-      className="text-muted-foreground leading-relaxed space-y-4 prose prose-sm max-w-none"
-      dangerouslySetInnerHTML={{ __html: institucion.institucion_objetivos }}
-    />
-  </div>
-) : (
-  /* ✅ Valores Institucionales - Fallback elegante */
-  <div>
-    <h2 className="text-3xl font-bold text-center mb-12" style={{ color: primaryColor }}>
-      Valores Institucionales
-    </h2>
-    <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      {[
-        { 
-          icon: Users, 
-          title: 'Compromiso Social', 
-          desc: 'Servicio a la comunidad con responsabilidad y ética profesional',
-          color: primaryColor 
-        },
-        { 
-          icon: BookOpen, 
-          title: 'Excelencia Académica', 
-          desc: 'Formación de calidad con estándares internacionales',
-          color: secondaryColor 
-        },
-        { 
-          icon: TrendingUp, 
-          title: 'Innovación', 
-          desc: 'Adaptación constante a las nuevas tecnologías y metodologías',
-          color: '#f59e0b' 
-        },
-        { 
-          icon: Award, 
-          title: 'Integridad', 
-          desc: 'Transparencia, honestidad y respeto en todas nuestras acciones',
-          color: primaryColor 
-        },
-      ].map((valor, idx) => (
-        <div 
-          key={idx} 
-          className="bg-card p-6 rounded-xl border shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 text-center group"
-        >
-          <div 
-            className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 transition-transform group-hover:scale-110"
-            style={{ backgroundColor: `${valor.color}15` }}
-          >
-            <valor.icon className="w-7 h-7" style={{ color: valor.color }} />
+      {institucion?.institucion_objetivos ? (
+        <div className="bg-card rounded-2xl p-8 border shadow-lg">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `${primaryColor}15` }}>
+              <Target className="w-6 h-6" style={{ color: primaryColor }} aria-hidden="true" />
+            </div>
+            <h2 className="text-2xl font-bold" style={{ color: primaryColor }}>Objetivos Estratégicos</h2>
           </div>
-          <h3 className="font-bold mb-2 text-foreground">{valor.title}</h3>
-          <p className="text-sm text-muted-foreground">{valor.desc}</p>
+          <div className="text-muted-foreground leading-relaxed space-y-4 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHTML(institucion.institucion_objetivos) }} />
         </div>
-      ))}
-    </div>
-  </div>
-)}
-
+      ) : (
+        <div>
+          <h2 className="text-3xl font-bold text-center mb-12" style={{ color: primaryColor }}>Valores Institucionales</h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              { icon: Users, title: 'Compromiso Social', desc: 'Servicio a la comunidad', color: primaryColor },
+              { icon: BookOpen, title: 'Excelencia Académica', desc: 'Formación de calidad', color: secondaryColor },
+              { icon: TrendingUp, title: 'Innovación', desc: 'Nuevas tecnologías', color: '#f59e0b' },
+              { icon: Award, title: 'Integridad', desc: 'Transparencia', color: primaryColor },
+            ].map((valor, idx) => (
+              <div key={idx} className="bg-card p-6 rounded-xl border shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 text-center group">
+                <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 transition-transform group-hover:scale-110" style={{ backgroundColor: `${isValidHexColor(valor.color) ? valor.color : '#04246C'}15` }}>
+                  <valor.icon className="w-7 h-7" style={{ color: isValidHexColor(valor.color) ? valor.color : '#04246C' }} aria-hidden="true" />
+                </div>
+                <h3 className="font-bold mb-2 text-foreground">{valor.title}</h3>
+                <p className="text-sm text-muted-foreground">{valor.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -557,40 +483,35 @@ function SeccionUbicacion({ institucion, ubicacion, primaryColor, secondaryColor
   primaryColor: string;
   secondaryColor: string;
 }) {
+  const safeMapUrl = useMemo(() => {
+    if (!institucion?.institucion_api_google_map) return '';
+    return isValidExternalUrl(institucion.institucion_api_google_map) ? institucion.institucion_api_google_map : '';
+  }, [institucion?.institucion_api_google_map]);
+
+  const safeCoords = useMemo(() => {
+    const lat = ubicacion?.ubicacion_latitud?.replace(/[^0-9.\-]/g, '') || '-16.489549430458553';
+    const lng = ubicacion?.ubicacion_longitud?.replace(/[^0-9.\-]/g, '') || '-68.19329917301572';
+    return { lat, lng };
+  }, [ubicacion?.ubicacion_latitud, ubicacion?.ubicacion_longitud]);
+
   return (
     <div className="grid lg:grid-cols-2 gap-8">
-      
-      {/* Info de contacto */}
       <div className="space-y-6">
         <div className="bg-card rounded-2xl p-8 border shadow-lg">
-          <h2 className="text-2xl font-bold mb-6" style={{ color: primaryColor }}>
-            Información de Contacto
-          </h2>
-          
+          <h2 className="text-2xl font-bold mb-6" style={{ color: primaryColor }}>Información de Contacto</h2>
           <div className="space-y-4">
-            {/* Dirección */}
             <div className="flex items-start gap-4">
-              <div 
-                className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${primaryColor}15` }}
-              >
-                <MapPin className="w-6 h-6" style={{ color: primaryColor }} />
+              <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${primaryColor}15` }}>
+                <MapPin className="w-6 h-6" style={{ color: primaryColor }} aria-hidden="true" />
               </div>
               <div>
                 <h3 className="font-semibold mb-1">Dirección</h3>
-                <p className="text-muted-foreground">
-                  {institucion?.institucion_direccion || 'Av. Sucre Z. Villa Esperanza, Campus UPEA Bloque B Piso 3'}
-                </p>
+                <p className="text-muted-foreground">{institucion?.institucion_direccion || 'Av. Sucre Z. Villa Esperanza, Campus UPEA Bloque B Piso 3'}</p>
               </div>
             </div>
-
-            {/* Teléfono */}
             <div className="flex items-start gap-4">
-              <div 
-                className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${secondaryColor}15` }}
-              >
-                <Phone className="w-6 h-6" style={{ color: secondaryColor }} />
+              <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${secondaryColor}15` }}>
+                <Phone className="w-6 h-6" style={{ color: secondaryColor }} aria-hidden="true" />
               </div>
               <div>
                 <h3 className="font-semibold mb-1">Teléfonos</h3>
@@ -600,88 +521,65 @@ function SeccionUbicacion({ institucion, ubicacion, primaryColor, secondaryColor
                 </p>
               </div>
             </div>
-
-            {/* Email */}
             <div className="flex items-start gap-4">
-              <div 
-                className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${primaryColor}15` }}
-              >
-                <Mail className="w-6 h-6" style={{ color: primaryColor }} />
+              <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${primaryColor}15` }}>
+                <Mail className="w-6 h-6" style={{ color: primaryColor }} aria-hidden="true" />
               </div>
               <div>
                 <h3 className="font-semibold mb-1">Correo Electrónico</h3>
-                <p className="text-muted-foreground">
-                  {institucion?.institucion_correo1 || 'info@institucion.edu.bo'}
-                </p>
+                <p className="text-muted-foreground">{institucion?.institucion_correo1 || 'info@institucion.edu.bo'}</p>
               </div>
             </div>
-
-            {/* Horario */}
             <div className="flex items-start gap-4">
-              <div 
-                className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${secondaryColor}15` }}
-              >
-                <Clock className="w-6 h-6" style={{ color: secondaryColor }} />
+              <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${secondaryColor}15` }}>
+                <Clock className="w-6 h-6" style={{ color: secondaryColor }} aria-hidden="true" />
               </div>
               <div>
                 <h3 className="font-semibold mb-1">Horario de Atención</h3>
-                <p className="text-muted-foreground">
-                  Lunes a Viernes: 8:00 - 12:00 y 14:00 - 18:00
-                </p>
+                <p className="text-muted-foreground">Lunes a Viernes: 8:00 - 12:00 y 14:00 - 18:00</p>
               </div>
             </div>
           </div>
         </div>
-
-        {/* Descripción adicional */}
         {ubicacion?.ubicacion_descripcion && (
           <div className="bg-card rounded-2xl p-8 border shadow-lg">
-            <h3 className="text-xl font-bold mb-4" style={{ color: primaryColor }}>
-              {ubicacion.ubicacion_titulo || 'Información Adicional'}
-            </h3>
-            <p 
-              className="text-muted-foreground leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: ubicacion.ubicacion_descripcion }}
-            />
+            <h3 className="text-xl font-bold mb-4" style={{ color: primaryColor }}>{ubicacion.ubicacion_titulo || 'Información Adicional'}</h3>
+            <p className="text-muted-foreground leading-relaxed" dangerouslySetInnerHTML={{ __html: sanitizeHTML(ubicacion.ubicacion_descripcion) }} />
           </div>
         )}
       </div>
-
-      {/* Mapa */}
       <div className="bg-card rounded-2xl overflow-hidden border shadow-lg">
-        {institucion?.institucion_api_google_map ? (
+        {safeMapUrl ? (
           <iframe
-            src={institucion.institucion_api_google_map}
+            src={safeMapUrl}
             width="100%"
             height="500"
             style={{ border: 0 }}
             allowFullScreen
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
+            sandbox="allow-scripts allow-same-origin allow-popups"
             className="w-full"
+            title="Ubicación en Google Maps"
           />
         ) : (
           <div className="w-full h-96 bg-muted flex items-center justify-center">
             <div className="text-center">
-              <Navigation className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+              <Navigation className="w-16 h-16 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
               <p className="text-muted-foreground">Mapa no disponible</p>
             </div>
           </div>
         )}
       </div>
-
-      {/* Botón de directions - Full width en móvil */}
       <div className="lg:col-span-2 text-center pt-4">
         <a
-          href={`https://www.google.com/maps/dir/?api=1&destination=${ubicacion?.ubicacion_latitud || '-16.489549430458553'},${ubicacion?.ubicacion_longitud || '-68.19329917301572'}`}
+          href={`https://www.google.com/maps/dir/?api=1&destination=${safeCoords.lat},${safeCoords.lng}`}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-8 py-4 rounded-full font-semibold text-white transition-all hover:shadow-lg hover:-translate-y-0.5"
-          style={{ backgroundColor: primaryColor }}
+          style={{ backgroundColor: isValidHexColor(primaryColor) ? primaryColor : '#04246C' }}
         >
-          <Navigation className="w-5 h-5" />
+          <Navigation className="w-5 h-5" aria-hidden="true" />
           Cómo llegar con Google Maps
         </a>
       </div>
@@ -689,7 +587,7 @@ function SeccionUbicacion({ institucion, ubicacion, primaryColor, secondaryColor
   );
 }
 
-// ==================== WRAPPER CON SUSPENSE ====================
+// ==================== WRAPPER ====================
 export default function InformacionPage() {
   return (
     <Suspense fallback={

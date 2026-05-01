@@ -8,6 +8,7 @@ import { Building2, MapPin, Phone, Users, ArrowLeft, Loader2 } from 'lucide-reac
 
 import api from '@/lib/axios';
 import { getStorageUrl } from '@/lib/utils';
+import { sanitizeHTML } from '@/lib/sanitize';
 import ThemeDynamicProvider from '@/components/providers/ThemeDynamicProvider';
 
 interface Sede {
@@ -30,39 +31,29 @@ export default function SedesPage() {
     const fetchSedes = async () => {
       try {
         setLoading(true);
-        const institucionId = process.env.NEXT_PUBLIC_INSTITUCION_ID || 12;
-        
-        // ✅ Fetch desde el endpoint de recursos
+        const institucionId = Number(process.env.NEXT_PUBLIC_INSTITUCION_ID) || 12;
         const recursosRes = await api.get(`/institucion/${institucionId}/recursos`);
         const instRes = await api.get(`/institucionesPrincipal/${institucionId}`);
         
-        console.log('📋 Todas las publicaciones:', recursosRes.data.upea_publicaciones);
-        
-        // ✅ Filtrar SOLO las sedes (publicaciones_tipo === "SEDES")
+
         const sedesFiltradas = (recursosRes.data.upea_publicaciones || [])
           .filter((pub: any) => pub.publicaciones_tipo === 'SEDES');
-        
-        console.log('🏛️ Sedes encontradas:', sedesFiltradas.length);
-        
-        // ✅ Mapear a formato Sede
+
         const sedesMapeadas = sedesFiltradas.map((pub: any) => ({
           sede_id: pub.publicaciones_id,
           sede_nombre: pub.publicaciones_titulo.replace('Sede Academica de ', '').replace('Sede Academica ', ''),
-          sede_direccion: pub.publicaciones_descripcion?.replace(/<[^>]*>/g, '') || 'Por definir',
+          sede_direccion: sanitizeHTML(pub.publicaciones_descripcion || '').replace(/<[^>]*>/g, '') || 'Por definir',
           sede_telefono: '',
-          sede_coordinador: pub.publicaciones_autor || 'Coordinación',
+          sede_coordinador: sanitizeHTML(pub.publicaciones_autor || 'Coordinación'),
           sede_imagen: pub.publicaciones_imagen,
           estado: '1'
         })) as Sede[];
-
-        console.log('🎯 Sedes mapeadas:', sedesMapeadas);
-
-        // ✅ Agregar Sede Central al inicio
+        
         const sedesCompletas = [
           {
             sede_id: 0,
             sede_nombre: 'Sede Central',
-            sede_direccion: instRes.data.Descripcion?.institucion_direccion || 'Por definir',
+            sede_direccion: sanitizeHTML(instRes.data.Descripcion?.institucion_direccion || 'Por definir'),
             sede_telefono: instRes.data.Descripcion?.institucion_celular1?.toString() || '',
             sede_coordinador: 'Dirección General',
             sede_imagen: instRes.data.Descripcion?.institucion_logo,
@@ -73,13 +64,14 @@ export default function SedesPage() {
 
         setSedes(sedesCompletas);
 
-        // Colores
         if (instRes.data.Descripcion?.colorinstitucion?.[0]) {
           setPrimaryColor(instRes.data.Descripcion.colorinstitucion[0].color_primario || '#04246C');
           setSecondaryColor(instRes.data.Descripcion.colorinstitucion[0].color_secundario || '#FC0102');
         }
       } catch (error) {
-        console.error('❌ Error cargando sedes:', error);
+        if (process.env.NODE_ENV === 'development') {
+         //
+        }
       } finally {
         setLoading(false);
       }
@@ -100,23 +92,17 @@ export default function SedesPage() {
     <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor }}>
       <div className="min-h-screen bg-background">
         
-        {/* Header */}
         <section className="relative py-20 overflow-hidden">
-          <div 
-            className="absolute inset-0"
-            style={{ 
-              background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}cc 25%, ${secondaryColor}99 60%, ${secondaryColor}44 100%)` 
-            }}
-          />
+          <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}cc 25%, ${secondaryColor}99 60%, ${secondaryColor}44 100%)` }} />
           <div className="relative max-w-6xl mx-auto px-4">
             <Link href="/" className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-8 transition-colors">
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4" aria-hidden="true" />
               Volver al inicio
             </Link>
             
             <div className="flex items-center gap-4">
               <div className="p-4 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20">
-                <Building2 className="w-10 h-10 text-white" />
+                <Building2 className="w-10 h-10 text-white" aria-hidden="true" />
               </div>
               <div>
                 <h1 className="text-4xl font-bold text-white">Nuestras Sedes</h1>
@@ -128,16 +114,11 @@ export default function SedesPage() {
           </div>
         </section>
 
-        {/* Lista de Sedes */}
         <section className="py-16">
           <div className="max-w-6xl mx-auto px-4">
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
               {sedes.map((sede) => (
-                <Link
-                  key={sede.sede_id}
-                  href={`/sedes/${sede.sede_id}`}
-                  className="group"
-                >
+                <Link key={sede.sede_id} href={`/sedes/${sede.sede_id}`} className="group">
                   <div className="bg-card rounded-2xl border shadow-lg hover:shadow-2xl transition-all hover:-translate-y-2 overflow-hidden">
                     <div className="relative h-48 bg-muted">
                       {sede.sede_imagen ? (
@@ -145,11 +126,13 @@ export default function SedesPage() {
                           src={getStorageUrl(sede.sede_imagen)}
                           alt={sede.sede_nombre}
                           fill
+                          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                           className="object-cover transition-transform group-hover:scale-105"
+                          loading="lazy"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <Building2 className="w-16 h-16 text-muted-foreground" />
+                          <Building2 className="w-16 h-16 text-muted-foreground" aria-hidden="true" />
                         </div>
                       )}
                     </div>
@@ -168,13 +151,13 @@ export default function SedesPage() {
                       <div className="space-y-2 text-sm">
                         {sede.sede_direccion && (
                           <div className="flex items-start gap-2 text-muted-foreground">
-                            <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: primaryColor }} />
+                            <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: primaryColor }} aria-hidden="true" />
                             <span className="line-clamp-2">{sede.sede_direccion}</span>
                           </div>
                         )}
                         {sede.sede_telefono && (
                           <div className="flex items-center gap-2 text-muted-foreground">
-                            <Phone className="w-4 h-4 flex-shrink-0" style={{ color: primaryColor }} />
+                            <Phone className="w-4 h-4 flex-shrink-0" style={{ color: primaryColor }} aria-hidden="true" />
                             <span>{sede.sede_telefono}</span>
                           </div>
                         )}
@@ -193,7 +176,7 @@ export default function SedesPage() {
 
             {sedes.length === 0 && (
               <div className="text-center py-20">
-                <Building2 className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                <Building2 className="w-16 h-16 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
                 <p className="text-muted-foreground">No hay sedes registradas</p>
               </div>
             )}

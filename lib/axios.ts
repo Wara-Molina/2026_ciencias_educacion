@@ -1,43 +1,71 @@
+// lib/axios.ts
 import axios from 'axios';
+import type { AxiosError, AxiosResponse } from 'axios';
 
-// 1. Creamos la instancia de Axios con la configuración base
+// ==================== CONFIGURACIÓN - SOLO DESDE VARIABLES DE ENTORNO ====================
+
+// ✅ URL base: SOLO desde .env, fallback vacío para fail-safe
+// Si no está configurada, las peticiones fallarán (mejor que enviar a dominio incorrecto)
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE 
+  || process.env.NEXT_PUBLIC_API_ROOT 
+  || '';
+
+// ✅ Timeout y token desde .env con valores por defecto seguros
+const API_TIMEOUT = parseInt(process.env.NEXT_PUBLIC_API_TIMEOUT || '10000', 10);
+const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN?.trim();
+
+// ==================== VALIDACIÓN EN DESARROLLO ====================
+
+// ✅ Solo en desarrollo: advertir si la URL base no está configurada
+if (process.env.NODE_ENV === 'development' && !API_BASE_URL) {
+  console.warn('⚠️ NEXT_PUBLIC_API_BASE no configurada. Las peticiones API pueden fallar.');
+  console.warn('   Agrega a tu .env.local:');
+  console.warn('   NEXT_PUBLIC_API_BASE=https://apiadministrador.upea.bo/api/v2');
+}
+
+// ==================== INSTANCIA DE AXIOS ====================
+
 const api = axios.create({
-  // Usamos NEXT_PUBLIC para que el navegador pueda leer esta variable
-  baseURL: process.env.NEXT_PUBLIC_API_BASE || 'https://apiadministrador.upea.bo/api/v2',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
-  timeout: 10000, // Tiempo máximo de espera (10 segundos)
-    // No enviar cookies por defecto (cambia a true si lo necesitas)
+  timeout: API_TIMEOUT,
   withCredentials: false,
+  maxRedirects: 3,
+  validateStatus: (status) => status >= 200 && status < 300,
 });
 
-// 2. Interceptor de Solicitud (Opcional: aquí puedes poner tu Token si lo tienes)
+// ==================== INTERCEPTOR DE SOLICITUD ====================
+
 api.interceptors.request.use(
-  (config) => {
-    const token = process.env.NEXT_PUBLIC_API_TOKEN;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  (config: any) => {
+    // ✅ Agregar token SOLO si existe y no está vacío
+    if (API_TOKEN && API_TOKEN.length > 0) {
+      config.headers.Authorization = `Bearer ${API_TOKEN}`;
+    }
+    
+    // ✅ Cache-busting para peticiones GET (evita respuestas cached)
+    if (config.method?.toLowerCase() === 'get') {
+      const separator = config.url?.includes('?') ? '&' : '?';
+      config.url = `${config.url || ''}${separator}_t=${Date.now()}`;
+    }
+    
     return config;
   },
-  (error) => {
+  (error: AxiosError) => {
+    // ✅ Log solo en desarrollo
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('❌ Error configurando petición:', error.message);
+    }
     return Promise.reject(error);
   }
 );
 
-// 3. Interceptor de Respuesta (Manejo de errores global)
-api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  (error) => {
-    // Aquí puedes manejar errores globales (ej: 401, 500)
-    console.error('❌ Error en la petición a la API:', error.message);
-    return Promise.reject(error);
-  }
-);
 
-// 4. Exportamos la instancia para usarla en cualquier lado
+
+// ==================== EXPORT ====================
+
 export default api;
+export { API_BASE_URL, API_TIMEOUT };

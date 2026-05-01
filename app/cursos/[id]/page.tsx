@@ -23,6 +23,7 @@ import Image from 'next/image';
 import api from '@/lib/axios';
 import { getStorageUrl } from '@/lib/utils';
 import ThemeDynamicProvider from '@/components/providers/ThemeDynamicProvider';
+import { sanitizeHTML, sanitizeText, validateNumericId } from '@/lib/security';
 
 // ==================== TIPOS ====================
 interface Curso {
@@ -55,7 +56,6 @@ interface InstitucionData {
   }>;
 }
 
-// ==================== COMPONENTE CONTENIDO ====================
 function CursoDetalleContent() {
   const params = useParams();
   const router = useRouter();
@@ -66,14 +66,20 @@ function CursoDetalleContent() {
   const [error, setError] = useState<string | null>(null);
   const [imageModalOpen, setImageModalOpen] = useState(false);
 
-  // Fetch datos
   useEffect(() => {
     const fetchCurso = async () => {
       try {
+
+        const safeId = validateNumericId(params.id);
+        if (!safeId) {
+          setError('ID de curso inválido');
+          setLoading(false);
+          return;
+        }
+        
         setLoading(true);
         setError(null);
         const institucionId = process.env.NEXT_PUBLIC_INSTITUCION_ID || 12;
-        const cursoId = params.id;
 
         const [cursosRes, instRes] = await Promise.all([
           api.get(`/institucion/${institucionId}/gacetaEventos`),
@@ -81,7 +87,7 @@ function CursoDetalleContent() {
         ]);
 
         const cursoEncontrado = cursosRes.data.cursos?.find(
-          (c: any) => c.iddetalle_cursos_academicos === Number(cursoId)
+          (c: any) => c.iddetalle_cursos_academicos === safeId
         );
 
         if (!cursoEncontrado) {
@@ -93,8 +99,11 @@ function CursoDetalleContent() {
         setInstitucion(instRes.data.Descripcion);
 
       } catch (err: any) {
-        console.error('❌ Error cargando curso:', err);
-        setError('No se pudo cargar la información del curso');
+        console.error('Error cargando curso:', err);
+
+        setError(process.env.NODE_ENV === 'production' 
+          ? 'No se pudo cargar el curso' 
+          : 'No se pudo cargar la información del curso');
       } finally {
         setLoading(false);
       }
@@ -105,7 +114,6 @@ function CursoDetalleContent() {
     }
   }, [params.id]);
 
-  // Cerrar modal con tecla ESC
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setImageModalOpen(false);
@@ -122,13 +130,20 @@ function CursoDetalleContent() {
     };
   }, [imageModalOpen]);
 
-  // Share handler
   const handleShare = async () => {
+    if (!curso) return;
+
+    const safeTitle = sanitizeText(curso.det_titulo, 100);
+    const safeDescription = sanitizeText(
+      curso.det_descripcion?.replace(/<[^>]*>/g, '') || '', 
+      200
+    );
+    
     if (navigator.share) {
       try {
         await navigator.share({
-          title: curso?.det_titulo,
-          text: curso?.det_descripcion?.replace(/<[^>]*>/g, '') || '',
+          title: safeTitle,
+          text: safeDescription,
           url: window.location.href,
         });
       } catch (err) {
@@ -136,11 +151,11 @@ function CursoDetalleContent() {
       }
     } else {
       navigator.clipboard.writeText(window.location.href);
-      alert('¡Enlace copiado al portapapeles!');
+      // Feedback seguro sin exponer datos
+      alert('Enlace copiado');
     }
   };
 
-  // ✅ Funciones para manejar el modal
   const openImageModal = () => setImageModalOpen(true);
   const closeImageModal = () => setImageModalOpen(false);
 
@@ -209,13 +224,13 @@ function CursoDetalleContent() {
     <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor }}>
       <div className="min-h-screen bg-background">
         
-        {/* 🖼️ Header con imagen */}
+        {/* Header con imagen */}
         <div className="relative h-64 md:h-80 lg:h-96 group cursor-pointer" onClick={openImageModal}>
           {curso.det_img_portada ? (
             <>
               <Image
                 src={imageUrl}
-                alt={curso.det_titulo}
+                alt={sanitizeText(curso.det_titulo, 150)} 
                 fill
                 className="object-cover transition-transform duration-500 group-hover:scale-105"
                 priority
@@ -235,7 +250,6 @@ function CursoDetalleContent() {
                 </div>
               </div>
 
-              {/* Badge flotante siempre visible en móvil */}
               <div className="absolute bottom-4 right-4 md:hidden">
                 <div className="bg-white/90 backdrop-blur-md rounded-full p-2 shadow-lg">
                   <ZoomIn className="w-5 h-5" style={{ color: primaryColor }} />
@@ -263,7 +277,6 @@ function CursoDetalleContent() {
             Volver
           </button>
 
-          {/* Botón compartir */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -276,13 +289,14 @@ function CursoDetalleContent() {
           </button>
         </div>
 
-        {/* MODAL DE IMAGEN COMPLETA */}
         {imageModalOpen && curso.det_img_portada && (
           <div 
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm"
             onClick={closeImageModal}
+                        role="dialog"
+            aria-modal="true"
+            aria-label="Vista ampliada de imagen"
           >
-            {/* Botón cerrar - ESQUINA SUPERIOR DERECHA */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -296,8 +310,7 @@ function CursoDetalleContent() {
                 Cerrar
               </span>
             </button>
-            
-            {/* Botón cerrar - ESQUINA SUPERIOR IZQUIERDA */}
+
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -309,22 +322,20 @@ function CursoDetalleContent() {
               <span className="text-white text-sm font-medium hidden sm:inline">Volver</span>
             </button>
 
-{/* Imagen - AHORA (más compacta) */}
 <div 
-  className="relative w-full h-full flex items-center justify-center p-4"
+  className="relative w-full h-full flex items-center justify-center p-4 sm:p-8"
   onClick={(e) => e.stopPropagation()}
 >
-  <div className="relative w-full max-w-md max-h-[80vh] sm:max-h-[100vh]">
+  <div className="relative w-full max-w-md max-h-[80vh] sm:max-h-[85vh]">
     <Image
       src={imageUrl}
-      alt={curso.det_titulo}
+      alt={sanitizeText(curso.det_titulo, 150)} 
       width={600}  
       height={400} 
       className="w-full h-full object-contain rounded-lg shadow-2xl"
       unoptimized
     />
-    
-    {/* Indicador de cerrar */}
+
     <div className="absolute -bottom-10 left-0 right-0 text-center hidden sm:block">
       <p className="text-white/60 text-xs">
         Click fuera o ESC para cerrar
@@ -333,16 +344,14 @@ function CursoDetalleContent() {
   </div>
 </div>
 
-            {/* Título del curso */}
             <div className="absolute bottom-8 left-0 right-0 text-center pointer-events-none">
               <p className="text-white text-lg font-semibold bg-black/60 backdrop-blur-md inline-block px-6 py-3 rounded-full">
-                {curso.det_titulo}
+                {sanitizeText(curso.det_titulo, 100)} 
               </p>
             </div>
           </div>
         )}
 
-        {/* 📄 Contenido */}
         <div className="max-w-4xl mx-auto px-4 -mt-20 relative z-10 pb-20">
           <div className="bg-card rounded-2xl shadow-xl border overflow-hidden">
             
@@ -358,13 +367,15 @@ function CursoDetalleContent() {
               </span>
 
               <h1 className="text-3xl md:text-4xl font-bold mb-4 text-foreground">
-                {curso.det_titulo}
+                {sanitizeText(curso.det_titulo, 150)} 
               </h1>
 
               {curso.det_descripcion && (
                 <div 
                   className="text-muted-foreground leading-relaxed mb-8 text-lg"
-                  dangerouslySetInnerHTML={{ __html: curso.det_descripcion }}
+                  dangerouslySetInnerHTML={{ 
+                    __html: sanitizeHTML(curso.det_descripcion) 
+                  }}
                 />
               )}
 
@@ -426,7 +437,7 @@ function CursoDetalleContent() {
                     {curso.det_lugar_curso && (
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4 text-muted-foreground" />
-                        <span>{curso.det_lugar_curso}</span>
+                        <span>{sanitizeText(curso.det_lugar_curso, 100)}</span> 
                       </div>
                     )}
                     {curso.det_hora_ini && (
@@ -438,7 +449,7 @@ function CursoDetalleContent() {
                     {curso.det_version && (
                       <div className="flex items-center gap-2">
                         <BookOpen className="w-4 h-4 text-muted-foreground" />
-                        <span>Versión: {curso.det_version}</span>
+                        <span>Versión: {sanitizeText(curso.det_version, 50)}</span> 
                       </div>
                     )}
                   </div>

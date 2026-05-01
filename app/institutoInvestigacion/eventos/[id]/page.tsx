@@ -1,7 +1,7 @@
 // app/institutoInvestigacion/eventos/[id]/page.tsx
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { 
   ArrowLeft, Calendar, Clock, MapPin, Share2, ExternalLink,
@@ -12,6 +12,7 @@ import Image from 'next/image';
 
 import api from '@/lib/axios';
 import { getStorageUrl } from '@/lib/utils';
+import { sanitizeHTML } from '@/lib/sanitize';
 import ThemeDynamicProvider from '@/components/providers/ThemeDynamicProvider';
 
 interface EventoInvestigacion {
@@ -32,10 +33,40 @@ interface InstitucionData {
   }>;
 }
 
+const isValidImageUrl = (url: string | undefined): boolean => {
+  if (!url) return false;
+  try {
+    const urlToParse = url.startsWith('http') ? url : `https://${url}`;
+    const parsed = new URL(urlToParse);
+    const validProtocol = ['https:'].includes(parsed.protocol);
+    const safeDomain = parsed.hostname.includes('upea.bo') || 
+                      parsed.hostname.includes('localhost') ||
+                      parsed.hostname.includes('127.0.0.1');
+    const safePath = !parsed.pathname.includes('<') && 
+                    !parsed.pathname.includes('>') &&
+                    !parsed.pathname.includes('javascript:');
+    return validProtocol && safeDomain && safePath;
+  } catch {
+    return false;
+  }
+};
+
+const sanitizeTextField = (text: string | undefined, maxLength = 500): string => {
+  if (!text) return '';
+  return sanitizeHTML(text)
+    .replace(/<[^>]*>/g, '')
+    .trim()
+    .slice(0, maxLength);
+};
+
 function EventoDetalleContent() {
   const params = useParams();
   const router = useRouter();
-  const eventoId = Number(params.id);
+ 
+  const rawEventoId = Number(params.id);
+  const eventoId = Number.isInteger(rawEventoId) && rawEventoId > 0 && rawEventoId < 10000000 
+    ? rawEventoId 
+    : null;
   
   const [evento, setEvento] = useState<EventoInvestigacion | null>(null);
   const [institucion, setInstitucion] = useState<InstitucionData | null>(null);
@@ -43,17 +74,23 @@ function EventoDetalleContent() {
   const [error, setError] = useState<string | null>(null);
   const [primaryColor, setPrimaryColor] = useState('#04246C');
   const [secondaryColor, setSecondaryColor] = useState('#FC0102');
-  
-  // ✅ Estado para modal de imagen
   const [imageModalOpen, setImageModalOpen] = useState(false);
 
   useEffect(() => {
+    if (eventoId === null) {
+      setLoading(false);
+      setError('ID de evento inválido');
+      return;
+    }
+
     let isMounted = true;
     const institucionId = Number(process.env.NEXT_PUBLIC_INSTITUCION_ID) || 12;
 
     const fetchEvento = async () => {
       try {
         setLoading(true);
+        
+        // ✅ CORRECCIÓN: Usar rutas relativas (axios tiene baseURL configurado)
         const [eventoRes, instRes] = await Promise.all([
           api.get(`/institucion/${institucionId}/gacetaEventos`),
           api.get(`/institucionesPrincipal/${institucionId}`)
@@ -61,29 +98,64 @@ function EventoDetalleContent() {
 
         if (!isMounted) return;
 
+        // ✅ Filtro ESTRICTO con normalización robusta
         const esTipoInvestigacion = (valor: any): boolean => {
           if (!valor) return false;
-          return String(valor).trim().toUpperCase() === 'INSTITUTO DE INVESTIGACION';
+          const normalized = String(valor)
+            .trim()
+            .toUpperCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ');
+          return normalized === 'INSTITUTO DE INVESTIGACION';
         };
 
+        // ✅ Buscar evento por ID + tipo
         const eventoEncontrado = eventoRes.data.upea_evento?.find(
           (e: any) => e.evento_id === eventoId && esTipoInvestigacion(e.tipo_evento)
         );
 
-        if (!eventoEncontrado) {
-          setError('Evento no encontrado');
+        // ✅ Fallback: buscar solo por ID si el tipo no coincide
+        const eventoFallback = !eventoEncontrado 
+          ? eventoRes.data.upea_evento?.find((e: any) => e.evento_id === eventoId)
+          : null;
+
+        const eventoFinal = eventoEncontrado || eventoFallback;
+
+        if (!eventoFinal) {
+          setError(`Evento #${eventoId} no encontrado`);
           return;
         }
 
-        setEvento(eventoEncontrado);
+        setEvento({
+          evento_id: eventoFinal.evento_id,
+          evento_titulo: sanitizeTextField(eventoFinal.evento_titulo, 200),
+          evento_imagen: eventoFinal.evento_imagen,
+          evento_descripcion: eventoFinal.evento_descripcion,
+          evento_fecha: eventoFinal.evento_fecha,
+          evento_hora: eventoFinal.evento_hora?.substring(0, 5) || '',
+          evento_lugar: sanitizeTextField(eventoFinal.evento_lugar, 150),
+          tipo_evento: sanitizeTextField(eventoFinal.tipo_evento, 50)
+        });
         setInstitucion(instRes.data.Descripcion || null);
 
         if (instRes.data.Descripcion?.colorinstitucion?.[0]) {
-          setPrimaryColor(instRes.data.Descripcion.colorinstitucion[0].color_primario);
-          setSecondaryColor(instRes.data.Descripcion.colorinstitucion[0].color_secundario);
+          const colors = instRes.data.Descripcion.colorinstitucion[0];
+          setPrimaryColor(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(colors.color_primario) ? colors.color_primario : '#04246C');
+          setSecondaryColor(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(colors.color_secundario) ? colors.color_secundario : '#FC0102');
         }
-      } catch (err) {
-        if (isMounted) setError('Error al cargar el evento');
+      } catch (err: any) {
+        if (isMounted) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Error cargando evento:', err);
+          }
+          const errorMessage = err.response?.status === 404 
+            ? 'El evento no existe en el servidor'
+            : err.response?.status === 401
+            ? 'Error de autenticación con la API'
+            : 'Error al cargar el evento';
+          setError(errorMessage);
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -93,7 +165,6 @@ function EventoDetalleContent() {
     return () => { isMounted = false; };
   }, [eventoId]);
 
-  // ✅ Cerrar modal con tecla ESC + Prevenir scroll
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setImageModalOpen(false);
@@ -119,23 +190,32 @@ function EventoDetalleContent() {
     });
   };
 
+  const imageUrl = useMemo(() => {
+    if (!evento?.evento_imagen) return '';
+    const url = getStorageUrl(evento.evento_imagen);
+    return isValidImageUrl(url) ? url : '';
+  }, [evento?.evento_imagen]);
+
   const handleShare = async () => {
+    if (!evento) return;
+    const safeTitle = sanitizeTextField(evento.evento_titulo, 100);
+    
     if (navigator.share) {
       try {
         await navigator.share({
-          title: evento?.evento_titulo,
+          title: safeTitle,
           url: window.location.href,
         });
       } catch (err) {
-        console.log('Error compartiendo:', err);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Share cancelado o error:', err);
+        }
       }
     } else {
       navigator.clipboard.writeText(window.location.href);
-      alert('¡Enlace copiado al portapapeles!');
     }
   };
 
-  // ✅ Funciones para manejar el modal
   const openImageModal = () => setImageModalOpen(true);
   const closeImageModal = () => setImageModalOpen(false);
 
@@ -147,7 +227,7 @@ function EventoDetalleContent() {
     );
   }
 
-  if (error || !evento) {
+  if (error || !evento || eventoId === null) {
     return (
       <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor }}>
         <div className="min-h-screen flex items-center justify-center bg-background p-8">
@@ -168,28 +248,29 @@ function EventoDetalleContent() {
     );
   }
 
-  const imageUrl = evento.evento_imagen ? getStorageUrl(evento.evento_imagen) : '';
-
   return (
     <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor }}>
       <div className="min-h-screen bg-background">
         
-        {/* 🖼️ Header con imagen - Click para abrir modal */}
-        {evento.evento_imagen ? (
+        {evento.evento_imagen && imageUrl ? (
           <div 
             className="relative h-64 md:h-80 group cursor-pointer"
             onClick={openImageModal}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && openImageModal()}
+            aria-label="Ver imagen en tamaño completo"
           >
             <Image
               src={imageUrl}
               alt={evento.evento_titulo}
               fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               className="object-cover transition-transform duration-500 group-hover:scale-105"
               priority
             />
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
             
-            {/* ✅ Overlay con indicador de zoom */}
             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 bg-black/40 backdrop-blur-[2px]">
               <div className="text-center transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
                 <div className="bg-white/90 backdrop-blur-md rounded-full p-4 shadow-2xl mb-3 inline-flex items-center gap-2">
@@ -202,26 +283,24 @@ function EventoDetalleContent() {
               </div>
             </div>
 
-            {/* Badge flotante en móvil */}
             <div className="absolute bottom-4 right-4 md:hidden">
               <div className="bg-white/90 backdrop-blur-md rounded-full p-2 shadow-lg">
                 <ZoomIn className="w-5 h-5" style={{ color: primaryColor }} />
               </div>
             </div>
 
-            {/* Botón volver - Con stopPropagation */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 router.back();
               }}
               className="absolute top-4 left-4 flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur-sm rounded-lg text-sm font-medium hover:bg-white transition-colors shadow-lg z-10"
+              aria-label="Volver a la página anterior"
             >
               <ArrowLeft className="w-4 h-4" />
               Volver
             </button>
 
-            {/* Botón compartir - Con stopPropagation */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -229,24 +308,25 @@ function EventoDetalleContent() {
               }}
               className="absolute top-4 right-4 p-2 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white transition-colors shadow-lg z-10"
               title="Compartir"
+              aria-label="Compartir evento"
             >
               <Share2 className="w-5 h-5" />
             </button>
           </div>
         ) : (
-          /* Header sin imagen */
           <div className="relative py-16 bg-gradient-to-br from-primary/10 to-background">
             <div className="max-w-4xl mx-auto px-4">
               <button
                 onClick={() => router.back()}
                 className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary mb-6"
+                aria-label="Volver"
               >
                 <ArrowLeft className="w-4 h-4" /> Volver
               </button>
               
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-14 h-14 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${primaryColor}20` }}>
-                  <Calendar className="w-7 h-7" style={{ color: primaryColor }} />
+                  <Calendar className="w-7 h-7" style={{ color: primaryColor }} aria-hidden="true" />
                 </div>
                 <h1 className="text-3xl md:text-4xl font-bold" style={{ color: primaryColor }}>
                   {evento.evento_titulo}
@@ -255,13 +335,13 @@ function EventoDetalleContent() {
               
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
+                  <Calendar className="w-4 h-4" style={{ color: primaryColor }} aria-hidden="true" />
                   <span>{formatDate(evento.evento_fecha)}</span>
                 </div>
                 {evento.evento_hora && (
                   <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    <span>{evento.evento_hora.substring(0, 5)}</span>
+                    <Clock className="w-4 h-4" style={{ color: primaryColor }} aria-hidden="true" />
+                    <span>{evento.evento_hora}</span>
                   </div>
                 )}
               </div>
@@ -269,13 +349,14 @@ function EventoDetalleContent() {
           </div>
         )}
 
-        {/* ✅ MODAL DE IMAGEN COMPLETA - Estilo Cursos */}
-        {imageModalOpen && evento.evento_imagen && (
+        {imageModalOpen && evento.evento_imagen && imageUrl && (
           <div 
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm"
             onClick={closeImageModal}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Vista ampliada de imagen"
           >
-            {/* Botón cerrar - ESQUINA SUPERIOR DERECHA */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -283,26 +364,25 @@ function EventoDetalleContent() {
               }}
               className="absolute top-4 right-4 z-[110] p-3 bg-white/20 hover:bg-white/30 rounded-full transition-all hover:scale-110 shadow-xl group"
               title="Cerrar (ESC)"
+              aria-label="Cerrar modal"
             >
               <X className="w-6 h-6 text-white" />
               <span className="absolute -bottom-8 right-0 text-white/70 text-xs opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                 Cerrar
               </span>
             </button>
-            
-            {/* Botón cerrar - ESQUINA SUPERIOR IZQUIERDA */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 closeImageModal();
               }}
               className="absolute top-4 left-4 z-[110] p-3 bg-white/20 hover:bg-white/30 rounded-full transition-all hover:scale-110 shadow-xl flex items-center gap-2"
+              aria-label="Volver"
             >
               <ArrowLeft className="w-6 h-6 text-white" />
               <span className="text-white text-sm font-medium hidden sm:inline">Volver</span>
             </button>
 
-            {/* Imagen - Compacta y centrada */}
             <div 
               className="relative w-full h-full flex items-center justify-center p-4"
               onClick={(e) => e.stopPropagation()}
@@ -316,8 +396,6 @@ function EventoDetalleContent() {
                   className="w-full h-full object-contain rounded-lg shadow-2xl"
                   unoptimized
                 />
-                
-                {/* Indicador de cerrar */}
                 <div className="absolute -bottom-10 left-0 right-0 text-center hidden sm:block">
                   <p className="text-white/60 text-xs">
                     Click fuera o ESC para cerrar
@@ -326,7 +404,6 @@ function EventoDetalleContent() {
               </div>
             </div>
 
-            {/* Título del evento */}
             <div className="absolute bottom-8 left-0 right-0 text-center pointer-events-none">
               <p className="text-white text-lg font-semibold bg-black/60 backdrop-blur-md inline-block px-6 py-3 rounded-full">
                 {evento.evento_titulo}
@@ -335,11 +412,9 @@ function EventoDetalleContent() {
           </div>
         )}
 
-        {/* 📄 Contenido */}
         <div className="max-w-4xl mx-auto px-4 py-12">
           <div className="bg-card rounded-2xl shadow-xl border overflow-hidden">
-            
-            {/* Si no hay imagen en header, mostrar título aquí */}
+
             {!evento.evento_imagen && (
               <div className="p-6 md:p-8 border-b">
                 <h1 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: primaryColor }}>
@@ -347,13 +422,13 @@ function EventoDetalleContent() {
                 </h1>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
+                    <Calendar className="w-4 h-4" style={{ color: primaryColor }} aria-hidden="true" />
                     <span>{formatDate(evento.evento_fecha)}</span>
                   </div>
                   {evento.evento_hora && (
                     <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      <span>{evento.evento_hora.substring(0, 5)}</span>
+                      <Clock className="w-4 h-4" style={{ color: primaryColor }} aria-hidden="true" />
+                      <span>{evento.evento_hora}</span>
                     </div>
                   )}
                 </div>
@@ -361,22 +436,20 @@ function EventoDetalleContent() {
             )}
 
             <div className="p-6 md:p-8">
-              {/* Descripción */}
               {evento.evento_descripcion && (
                 <div className="mb-8">
                   <h3 className="font-semibold mb-3 text-lg">Descripción</h3>
                   <div 
                     className="prose prose-sm max-w-none text-muted-foreground"
-                    dangerouslySetInnerHTML={{ __html: evento.evento_descripcion }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHTML(evento.evento_descripcion) }}
                   />
                 </div>
               )}
 
-              {/* Info adicional */}
               <div className="grid md:grid-cols-2 gap-6 mb-8 p-6 rounded-xl bg-muted/50 border">
                 {evento.evento_fecha && (
                   <div className="flex items-start gap-3">
-                    <Calendar className="w-5 h-5 flex-shrink-0" style={{ color: primaryColor }} />
+                    <Calendar className="w-5 h-5 flex-shrink-0" style={{ color: primaryColor }} aria-hidden="true" />
                     <div>
                       <p className="text-sm font-medium mb-1">Fecha</p>
                       <p className="text-sm text-muted-foreground">{formatDate(evento.evento_fecha)}</p>
@@ -385,16 +458,16 @@ function EventoDetalleContent() {
                 )}
                 {evento.evento_hora && (
                   <div className="flex items-start gap-3">
-                    <Clock className="w-5 h-5 flex-shrink-0" style={{ color: primaryColor }} />
+                    <Clock className="w-5 h-5 flex-shrink-0" style={{ color: primaryColor }} aria-hidden="true" />
                     <div>
                       <p className="text-sm font-medium mb-1">Hora</p>
-                      <p className="text-sm text-muted-foreground">{evento.evento_hora.substring(0, 5)}</p>
+                      <p className="text-sm text-muted-foreground">{evento.evento_hora}</p>
                     </div>
                   </div>
                 )}
                 {evento.evento_lugar && (
                   <div className="flex items-start gap-3">
-                    <MapPin className="w-5 h-5 flex-shrink-0" style={{ color: primaryColor }} />
+                    <MapPin className="w-5 h-5 flex-shrink-0" style={{ color: primaryColor }} aria-hidden="true" />
                     <div>
                       <p className="text-sm font-medium mb-1">Lugar</p>
                       <p className="text-sm text-muted-foreground">{evento.evento_lugar}</p>
@@ -402,7 +475,7 @@ function EventoDetalleContent() {
                   </div>
                 )}
                 <div className="flex items-start gap-3">
-                  <Target className="w-5 h-5 flex-shrink-0" style={{ color: primaryColor }} />
+                  <Target className="w-5 h-5 flex-shrink-0" style={{ color: primaryColor }} aria-hidden="true" />
                   <div>
                     <p className="text-sm font-medium mb-1">Tipo</p>
                     <p className="text-sm text-muted-foreground">{evento.tipo_evento}</p>
@@ -410,25 +483,23 @@ function EventoDetalleContent() {
                 </div>
               </div>
 
-              {/* Acciones */}
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={handleShare}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm"
                   style={{ backgroundColor: `${primaryColor}10`, color: primaryColor }}
                 >
-                  <Share2 className="w-4 h-4" />
+                  <Share2 className="w-4 h-4" aria-hidden="true" />
                   Compartir
                 </button>
-                
-                {/* Botón para abrir modal si hay imagen */}
-                {evento.evento_imagen && (
+
+                {evento.evento_imagen && imageUrl && (
                   <button
                     onClick={openImageModal}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm"
                     style={{ backgroundColor: `${secondaryColor}10`, color: secondaryColor }}
                   >
-                    <ZoomIn className="w-4 h-4" />
+                    <ZoomIn className="w-4 h-4" aria-hidden="true" />
                     Ver imagen
                   </button>
                 )}
@@ -436,13 +507,12 @@ function EventoDetalleContent() {
             </div>
           </div>
 
-          {/* Navegación */}
           <div className="mt-8">
             <Link
               href="/institutoInvestigacion"
               className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-4 h-4" aria-hidden="true" />
               Volver al instituto de investigación
             </Link>
           </div>

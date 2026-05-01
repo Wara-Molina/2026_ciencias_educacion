@@ -1,11 +1,11 @@
 // app/institutoInvestigacion/page.tsx
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { 
   FlaskConical, BookOpen, Calendar, Users, Target, 
-  TrendingUp, Award, FileText, ArrowLeft, Search,
+  TrendingUp, Award, FileText, ArrowLeft,
   ChevronRight, Microscope, GraduationCap, Loader2,
   ChevronLeft, ChevronRight as ChevronRightIcon
 } from 'lucide-react';
@@ -14,9 +14,9 @@ import Image from 'next/image';
 
 import api from '@/lib/axios';
 import { getStorageUrl } from '@/lib/utils';
+import { sanitizeHTML } from '@/lib/sanitize';
 import ThemeDynamicProvider from '@/components/providers/ThemeDynamicProvider';
 
-// ==================== TIPOS ====================
 interface ColorInstitucion {
   color_primario: string;
   color_secundario: string;
@@ -59,19 +59,46 @@ interface InstitucionData {
   colorinstitucion: ColorInstitucion[];
 }
 
-// ==================== COMPONENTE PRINCIPAL ====================
+const isValidResourceUrl = (url: string | undefined): boolean => {
+  if (!url) return false;
+  try {
+    const urlToParse = url.startsWith('http') ? url : `https://${url}`;
+    const parsed = new URL(urlToParse);
+    const validProtocol = ['https:'].includes(parsed.protocol);
+    const safeDomain = parsed.hostname.includes('upea.bo') || 
+                      parsed.hostname.includes('localhost') ||
+                      parsed.hostname.includes('127.0.0.1');
+    const safePath = !parsed.pathname.includes('<') && 
+                    !parsed.pathname.includes('>') &&
+                    !parsed.pathname.includes('javascript:');
+    return validProtocol && safeDomain && safePath;
+  } catch {
+    return false;
+  }
+};
+
+const sanitizeTextField = (text: string | undefined, maxLength = 500): string => {
+  if (!text) return '';
+  return sanitizeHTML(text)
+    .replace(/<[^>]*>/g, '')
+    .trim()
+    .slice(0, maxLength);
+};
+
 function InstitutoInvestigacionContent() {
-  const institucionId = Number(process.env.NEXT_PUBLIC_INSTITUCION_ID) || 12;
+  const rawInstitucionId = Number(process.env.NEXT_PUBLIC_INSTITUCION_ID);
+  const institucionId = Number.isInteger(rawInstitucionId) && rawInstitucionId > 0 && rawInstitucionId < 1000000 
+    ? rawInstitucionId 
+    : 12;
+    
   const searchParams = useSearchParams();
   const router = useRouter();
-  
-  // ✅ Estados para paginación por sección
+
   const [paginaProyectos, setPaginaProyectos] = useState(1);
   const [paginaPublicaciones, setPaginaPublicaciones] = useState(1);
   const [paginaEventos, setPaginaEventos] = useState(1);
   const itemsPorPagina = 6;
   
-  // Estados de datos
   const [gacetas, setGacetas] = useState<GacetaInvestigacion[]>([]);
   const [eventos, setEventos] = useState<EventoInvestigacion[]>([]);
   const [publicaciones, setPublicaciones] = useState<PublicacionInvestigacion[]>([]);
@@ -80,11 +107,9 @@ function InstitutoInvestigacionContent() {
   const [activeTab, setActiveTab] = useState<'proyectos' | 'publicaciones' | 'eventos'>('proyectos');
   const [error, setError] = useState<string | null>(null);
   
-  // Colores dinámicos
   const [primaryColor, setPrimaryColor] = useState('#04246C');
   const [secondaryColor, setSecondaryColor] = useState('#FC0102');
 
-  // ==================== FETCH DATOS - FILTRADO ROBUSTO ====================
   useEffect(() => {
     let isMounted = true;
 
@@ -101,78 +126,74 @@ function InstitutoInvestigacionContent() {
 
         if (!isMounted) return;
 
-        // ✅ Función helper robusta para filtrar "INSTITUTO DE INVESTIGACION"
+        // ✅ Filtro ESTRICTO: Solo "INSTITUTO DE INVESTIGACION" exacto (con normalización)
         const esTipoInvestigacion = (valor: any): boolean => {
           if (!valor) return false;
-          // Normalizar: mayúsculas, sin tildes, sin espacios extra
+          // Normalizar: quitar tildes, mayúsculas, espacios extra
           const normalized = String(valor)
             .trim()
             .toUpperCase()
-            .replace(/[ÁÀÂÄ]/g, 'A')
-            .replace(/[ÉÈÊË]/g, 'E')
-            .replace(/[ÍÌÎÏ]/g, 'I')
-            .replace(/[ÓÒÔÖ]/g, 'O')
-            .replace(/[ÚÙÛÜ]/g, 'U')
-            .replace(/Ñ/g, 'N');
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '') // Quitar tildes
+            .replace(/\s+/g, ' '); // Espacios únicos
           
-          // Match exacto o contiene ambas palabras clave
-          return normalized === 'INSTITUTO DE INVESTIGACION' || 
-                 (normalized.includes('INSTITUTO') && normalized.includes('INVESTIGACION'));
+          return normalized === 'INSTITUTO DE INVESTIGACION';
         };
 
-        // ✅ Filtrar GACETAS
+        // ✅ Gacetas: filtrar ESTRICTAMENTE
         const gacetasData = (gacetaEventosRes.data.upea_gaceta_universitaria || [])
           .filter((g: any) => esTipoInvestigacion(g.gaceta_tipo))
           .map((g: any) => ({
             gaceta_id: g.gaceta_id,
-            gaceta_titulo: g.gaceta_titulo || 'Sin título',
+            gaceta_titulo: sanitizeTextField(g.gaceta_titulo, 200),
             gaceta_fecha: g.gaceta_fecha,
-            gaceta_documento: g.gaceta_documento,
-            gaceta_tipo: 'INSTITUTO DE INVESTIGACION'
+            gaceta_documento: isValidResourceUrl(g.gaceta_documento) ? g.gaceta_documento : undefined,
+            gaceta_tipo: sanitizeTextField(g.gaceta_tipo, 50)
           })) as GacetaInvestigacion[];
         
-        // ✅ Filtrar EVENTOS
+        // ✅ Eventos: filtrar ESTRICTAMENTE
         const eventosData = (gacetaEventosRes.data.upea_evento || [])
           .filter((e: any) => esTipoInvestigacion(e.tipo_evento))
           .map((e: any) => ({
             evento_id: e.evento_id,
-            evento_titulo: e.evento_titulo || 'Evento sin título',
-            evento_imagen: e.evento_imagen,
-            evento_descripcion: e.evento_descripcion || '',
+            evento_titulo: sanitizeTextField(e.evento_titulo, 200),
+            evento_imagen: isValidResourceUrl(e.evento_imagen) ? e.evento_imagen : undefined,
+            evento_descripcion: sanitizeHTML(e.evento_descripcion || ''),
             evento_fecha: e.evento_fecha,
-            evento_hora: e.evento_hora,
-            evento_lugar: e.evento_lugar,
-            tipo_evento: 'INSTITUTO DE INVESTIGACION'
+            evento_hora: e.evento_hora?.substring(0, 5) || '',
+            evento_lugar: sanitizeTextField(e.evento_lugar, 100),
+            tipo_evento: sanitizeTextField(e.tipo_evento, 50)
           })) as EventoInvestigacion[];
         
-        // ✅ Filtrar PUBLICACIONES
+        // ✅ Publicaciones: filtrar ESTRICTAMENTE
         const publicacionesData = (recursosRes.data.upea_publicaciones || [])
           .filter((p: any) => esTipoInvestigacion(p.publicaciones_tipo))
           .map((p: any) => ({
             publicaciones_id: p.publicaciones_id,
-            publicaciones_titulo: p.publicaciones_titulo || 'Sin título',
-            publicaciones_imagen: p.publicaciones_imagen,
-            publicaciones_descripcion: p.publicaciones_descripcion || '',
-            publicaciones_documento: p.publicaciones_documento,
+            publicaciones_titulo: sanitizeTextField(p.publicaciones_titulo, 200),
+            publicaciones_imagen: isValidResourceUrl(p.publicaciones_imagen) ? p.publicaciones_imagen : undefined,
+            publicaciones_descripcion: sanitizeHTML(p.publicaciones_descripcion || ''),
+            publicaciones_documento: isValidResourceUrl(p.publicaciones_documento) ? p.publicaciones_documento : undefined,
             publicaciones_fecha: p.publicaciones_fecha,
-            publicaciones_autor: p.publicaciones_autor,
-            publicaciones_tipo: 'INSTITUTO DE INVESTIGACION'
+            publicaciones_autor: sanitizeTextField(p.publicaciones_autor, 100),
+            publicaciones_tipo: sanitizeTextField(p.publicaciones_tipo, 50)
           })) as PublicacionInvestigacion[];
 
-        // ✅ Actualizar estados
         setGacetas(gacetasData);
         setEventos(eventosData);
         setPublicaciones(publicacionesData);
         setInstitucion(instRes.data.Descripcion || null);
 
-        // ✅ Colores dinámicos
         if (instRes.data.Descripcion?.colorinstitucion?.[0]) {
-          setPrimaryColor(instRes.data.Descripcion.colorinstitucion[0].color_primario || '#04246C');
-          setSecondaryColor(instRes.data.Descripcion.colorinstitucion[0].color_secundario || '#FC0102');
+          const colors = instRes.data.Descripcion.colorinstitucion[0];
+          setPrimaryColor(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(colors.color_primario) ? colors.color_primario : '#04246C');
+          setSecondaryColor(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(colors.color_secundario) ? colors.color_secundario : '#FC0102');
         }
       } catch (err: any) {
         if (isMounted) {
-          console.error('❌ Error cargando instituto:', err);
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Error cargando datos del instituto:', err);
+          }
           setError('No se pudieron cargar los datos del instituto. Intente más tarde.');
         }
       } finally {
@@ -184,14 +205,12 @@ function InstitutoInvestigacionContent() {
     return () => { isMounted = false; };
   }, [institucionId]);
 
-  // ✅ Resetear paginación al cambiar de tab
   useEffect(() => {
     setPaginaProyectos(1);
     setPaginaPublicaciones(1);
     setPaginaEventos(1);
   }, [activeTab]);
 
-  // Helpers
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Fecha no disponible';
     const date = new Date(dateString);
@@ -201,37 +220,44 @@ function InstitutoInvestigacionContent() {
     });
   };
 
-  // ✅ Cálculos de paginación por sección
-  const totalPaginasProyectos = Math.ceil(gacetas.length / itemsPorPagina);
-  const totalPaginasPublicaciones = Math.ceil(publicaciones.length / itemsPorPagina);
-  const totalPaginasEventos = Math.ceil(eventos.length / itemsPorPagina);
+  const totalPaginasProyectos = Math.max(1, Math.ceil(gacetas.length / itemsPorPagina));
+  const totalPaginasPublicaciones = Math.max(1, Math.ceil(publicaciones.length / itemsPorPagina));
+  const totalPaginasEventos = Math.max(1, Math.ceil(eventos.length / itemsPorPagina));
 
-  const gacetasPagina = gacetas.slice(
-    (paginaProyectos - 1) * itemsPorPagina,
-    paginaProyectos * itemsPorPagina
+  const gacetasPagina = useMemo(() => 
+    gacetas.slice((paginaProyectos - 1) * itemsPorPagina, paginaProyectos * itemsPorPagina),
+    [gacetas, paginaProyectos]
   );
-  const publicacionesPagina = publicaciones.slice(
-    (paginaPublicaciones - 1) * itemsPorPagina,
-    paginaPublicaciones * itemsPorPagina
+  
+  const publicacionesPagina = useMemo(() => 
+    publicaciones.slice((paginaPublicaciones - 1) * itemsPorPagina, paginaPublicaciones * itemsPorPagina),
+    [publicaciones, paginaPublicaciones]
   );
-  const eventosPagina = eventos.slice(
-    (paginaEventos - 1) * itemsPorPagina,
-    paginaEventos * itemsPorPagina
+  
+  const eventosPagina = useMemo(() => 
+    eventos.slice((paginaEventos - 1) * itemsPorPagina, paginaEventos * itemsPorPagina),
+    [eventos, paginaEventos]
   );
 
-  // ✅ Componente de Paginación Reutilizable
+  const cambiarPagina = (setter: React.Dispatch<React.SetStateAction<number>>, nuevaPagina: number, totalPaginas: number) => {
+    const safePagina = Number.isInteger(nuevaPagina) && nuevaPagina > 0 && nuevaPagina <= totalPaginas 
+      ? nuevaPagina 
+      : 1;
+    setter(safePagina);
+  };
+
   const renderPagination = (paginaActual: number, totalPaginas: number, onPageChange: (page: number) => void) => {
     if (totalPaginas <= 1) return null;
     
     return (
-      <div className="flex items-center justify-center gap-2 mt-8">
+      <div className="flex items-center justify-center gap-2 mt-8" role="navigation" aria-label="Paginación">
         <button
           onClick={() => onPageChange(paginaActual - 1)}
           disabled={paginaActual === 1}
           className="p-2 rounded-lg border border-border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted transition-colors"
           aria-label="Página anterior"
         >
-          <ChevronLeft className="w-5 h-5" />
+          <ChevronLeft className="w-5 h-5" aria-hidden="true" />
         </button>
         
         {Array.from({ length: totalPaginas }, (_, i) => i + 1).map((pagina) => (
@@ -244,6 +270,8 @@ function InstitutoInvestigacionContent() {
                 : 'border border-border hover:bg-muted'
             }`}
             style={pagina === paginaActual ? { backgroundColor: primaryColor } : {}}
+            aria-current={pagina === paginaActual ? 'page' : undefined}
+            aria-label={`Ir a página ${pagina}`}
           >
             {pagina}
           </button>
@@ -255,13 +283,12 @@ function InstitutoInvestigacionContent() {
           className="p-2 rounded-lg border border-border disabled:opacity-50 disabled:cursor-not-allowed hover:bg-muted transition-colors"
           aria-label="Página siguiente"
         >
-          <ChevronRightIcon className="w-5 h-5" />
+          <ChevronRightIcon className="w-5 h-5" aria-hidden="true" />
         </button>
       </div>
     );
   };
 
-  // ==================== RENDER LOADING ====================
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -273,7 +300,6 @@ function InstitutoInvestigacionContent() {
     );
   }
 
-  // ==================== RENDER ERROR ====================
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -293,47 +319,21 @@ function InstitutoInvestigacionContent() {
     );
   }
 
-  // ==================== RENDER PRINCIPAL ====================
   return (
     <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor }}>
       <div className="min-h-screen bg-background">
         
-        {/* 🎨 Header Elegante con Degradado */}
         <section className="relative py-20 overflow-hidden">
-          <div 
-            className="absolute inset-0"
-            style={{ 
-              background: `
-                linear-gradient(135deg, 
-                  ${primaryColor} 0%, 
-                  ${primaryColor}cc 25%, 
-                  ${secondaryColor}99 60%, 
-                  ${secondaryColor}44 100%
-                )
-              ` 
-            }}
-          />
-          
+          <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${primaryColor}cc 25%, ${secondaryColor}99 60%, ${secondaryColor}44 100%)` }} />
           <div className="absolute inset-0 opacity-10">
-            <div 
-              className="absolute inset-0"
-              style={{
-                backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
-                backgroundSize: '40px 40px'
-              }}
-            />
+            <div className="absolute inset-0" style={{ backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`, backgroundSize: '40px 40px' }} />
           </div>
-          
           <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
           <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
-          
           <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
           
           <div className="relative max-w-6xl mx-auto px-4">
-            <Link 
-              href="/" 
-              className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-8 transition-colors group"
-            >
+            <Link href="/" className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-8 transition-colors group">
               <div className="p-2 rounded-full bg-white/10 group-hover:bg-white/20 transition-colors">
                 <ArrowLeft className="w-4 h-4" />
               </div>
@@ -344,40 +344,30 @@ function InstitutoInvestigacionContent() {
               <div className="p-4 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20">
                 <FlaskConical className="w-10 h-10 text-white" />
               </div>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white">
-                Instituto de Investigación
-              </h1>
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white">Instituto de Investigación</h1>
             </div>
             
             <p className="text-lg md:text-xl text-white/90 max-w-3xl leading-relaxed">
               {institucion?.institucion_nombre || 'Carrera'} - Generando conocimiento científico e innovación
             </p>
             
-            {/* Badge decorativo con contadores */}
             <div className="mt-8 flex flex-wrap gap-3">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20">
                 <FlaskConical className="w-4 h-4 text-white" />
-                <span className="text-sm text-white/90">
-                  {gacetas.length} proyectos
-                </span>
+                <span className="text-sm text-white/90">{gacetas.length} proyectos</span>
               </div>
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20">
                 <BookOpen className="w-4 h-4 text-white" />
-                <span className="text-sm text-white/90">
-                  {publicaciones.length} publicaciones
-                </span>
+                <span className="text-sm text-white/90">{publicaciones.length} publicaciones</span>
               </div>
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20">
                 <Calendar className="w-4 h-4 text-white" />
-                <span className="text-sm text-white/90">
-                  {eventos.length} eventos
-                </span>
+                <span className="text-sm text-white/90">{eventos.length} eventos</span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Estadísticas rápidas */}
         <div className="max-w-6xl mx-auto px-4 -mt-8 relative z-10">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-card rounded-xl p-6 border shadow-lg">
@@ -403,101 +393,79 @@ function InstitutoInvestigacionContent() {
           </div>
         </div>
 
-        {/* Tabs de navegación */}
         <div className="bg-background border-b border-border py-4 sticky top-16 z-40">
           <div className="max-w-6xl mx-auto px-4">
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setActiveTab('proyectos')}
                 className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-all ${
-                  activeTab === 'proyectos' 
-                    ? 'text-white shadow-md' 
-                    : 'bg-muted text-foreground hover:bg-muted/80'
+                  activeTab === 'proyectos' ? 'text-white shadow-md' : 'bg-muted text-foreground hover:bg-muted/80'
                 }`}
                 style={activeTab === 'proyectos' ? { backgroundColor: primaryColor } : {}}
+                aria-pressed={activeTab === 'proyectos'}
               >
-                <FlaskConical className="w-5 h-5" />
+                <FlaskConical className="w-5 h-5" aria-hidden="true" />
                 Proyectos de Investigación
               </button>
               <button
                 onClick={() => setActiveTab('publicaciones')}
                 className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-all ${
-                  activeTab === 'publicaciones' 
-                    ? 'text-white shadow-md' 
-                    : 'bg-muted text-foreground hover:bg-muted/80'
+                  activeTab === 'publicaciones' ? 'text-white shadow-md' : 'bg-muted text-foreground hover:bg-muted/80'
                 }`}
                 style={activeTab === 'publicaciones' ? { backgroundColor: primaryColor } : {}}
+                aria-pressed={activeTab === 'publicaciones'}
               >
-                <BookOpen className="w-5 h-5" />
+                <BookOpen className="w-5 h-5" aria-hidden="true" />
                 Publicaciones
               </button>
               <button
                 onClick={() => setActiveTab('eventos')}
                 className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium transition-all ${
-                  activeTab === 'eventos' 
-                    ? 'text-white shadow-md' 
-                    : 'bg-muted text-foreground hover:bg-muted/80'
+                  activeTab === 'eventos' ? 'text-white shadow-md' : 'bg-muted text-foreground hover:bg-muted/80'
                 }`}
                 style={activeTab === 'eventos' ? { backgroundColor: primaryColor } : {}}
+                aria-pressed={activeTab === 'eventos'}
               >
-                <Calendar className="w-5 h-5" />
+                <Calendar className="w-5 h-5" aria-hidden="true" />
                 Eventos
               </button>
             </div>
           </div>
         </div>
 
-        {/* Contenido */}
         <div className="max-w-6xl mx-auto px-4 py-12">
           
-          {/* PROYECTOS (Gacetas) */}
           {activeTab === 'proyectos' && (
             <div>
               <div className="mb-8">
-                <h2 className="text-3xl font-bold mb-4" style={{ color: primaryColor }}>
-                  Proyectos de Investigación
-                </h2>
-                <p className="text-muted-foreground">
-                  Conoce los proyectos de investigación que estamos desarrollando
-                </p>
+                <h2 className="text-3xl font-bold mb-4" style={{ color: primaryColor }}>Proyectos de Investigación</h2>
+                <p className="text-muted-foreground">Conoce los proyectos de investigación que estamos desarrollando</p>
               </div>
 
               {gacetas.length === 0 ? (
                 <div className="text-center py-20">
-                  <FlaskConical className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                  <FlaskConical className="w-16 h-16 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
                   <h3 className="text-xl font-bold mb-2">No hay proyectos registrados</h3>
-                  <p className="text-muted-foreground">
-                    Próximamente se publicarán nuevos proyectos de investigación
-                  </p>
+                  <p className="text-muted-foreground">Próximamente se publicarán nuevos proyectos de investigación</p>
                 </div>
               ) : (
                 <>
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {gacetasPagina.map((gaceta) => (
-                      <Link
-                        key={gaceta.gaceta_id}
-                        href={`/institutoInvestigacion/gacetas/${gaceta.gaceta_id}`}
-                        className="block group"
-                      >
+                      <Link key={gaceta.gaceta_id} href={`/institutoInvestigacion/gacetas/${gaceta.gaceta_id}`} className="block group">
                         <div className="bg-card rounded-xl border border-border hover:shadow-xl transition-all hover:-translate-y-1 p-6">
-                          <div 
-                            className="w-12 h-12 rounded-lg flex items-center justify-center mb-4"
-                            style={{ backgroundColor: `${primaryColor}15` }}
-                          >
-                            <FileText className="w-6 h-6" style={{ color: primaryColor }} />
+                          <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: `${primaryColor}15` }}>
+                            <FileText className="w-6 h-6" style={{ color: primaryColor }} aria-hidden="true" />
                           </div>
-                          <h3 className="text-lg font-bold mb-3 group-hover:text-primary transition-colors line-clamp-2">
-                            {gaceta.gaceta_titulo}
-                          </h3>
+                          <h3 className="text-lg font-bold mb-3 group-hover:text-primary transition-colors line-clamp-2">{gaceta.gaceta_titulo}</h3>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Calendar className="w-4 h-4" />
+                            <Calendar className="w-4 h-4" style={{ color: primaryColor }} aria-hidden="true" />
                             <span>{formatDate(gaceta.gaceta_fecha)}</span>
                           </div>
                           {gaceta.gaceta_documento && (
                             <div className="mt-4 pt-4 border-t border-border">
                               <span className="inline-flex items-center gap-2 text-sm font-medium" style={{ color: primaryColor }}>
-                                Ver proyecto
-                                <ChevronRight className="w-4 h-4" />
+                                Ver proyecto <ChevronRight className="w-4 h-4" aria-hidden="true" />
                               </span>
                             </div>
                           )}
@@ -506,47 +474,33 @@ function InstitutoInvestigacionContent() {
                     ))}
                   </div>
 
-                  {/* Paginación Proyectos */}
-                  {renderPagination(paginaProyectos, totalPaginasProyectos, setPaginaProyectos)}
+                  {renderPagination(paginaProyectos, totalPaginasProyectos, (page) => cambiarPagina(setPaginaProyectos, page, totalPaginasProyectos))}
                   {totalPaginasProyectos > 1 && (
-                    <p className="text-center text-sm text-muted-foreground mt-4">
-                      Página {paginaProyectos} de {totalPaginasProyectos}
-                    </p>
+                    <p className="text-center text-sm text-muted-foreground mt-4">Página {paginaProyectos} de {totalPaginasProyectos}</p>
                   )}
                 </>
               )}
             </div>
           )}
 
-          {/* PUBLICACIONES */}
           {activeTab === 'publicaciones' && (
             <div>
               <div className="mb-8">
-                <h2 className="text-3xl font-bold mb-4" style={{ color: primaryColor }}>
-                  Publicaciones Científicas
-                </h2>
-                <p className="text-muted-foreground">
-                  Artículos, papers y documentos académicos producidos por el instituto
-                </p>
+                <h2 className="text-3xl font-bold mb-4" style={{ color: primaryColor }}>Publicaciones Científicas</h2>
+                <p className="text-muted-foreground">Artículos, papers y documentos académicos producidos por el instituto</p>
               </div>
 
               {publicaciones.length === 0 ? (
                 <div className="text-center py-20">
-                  <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                  <BookOpen className="w-16 h-16 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
                   <h3 className="text-xl font-bold mb-2">No hay publicaciones disponibles</h3>
-                  <p className="text-muted-foreground">
-                    Las publicaciones del instituto aparecerán aquí
-                  </p>
+                  <p className="text-muted-foreground">Las publicaciones del instituto aparecerán aquí</p>
                 </div>
               ) : (
                 <>
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {publicacionesPagina.map((publi) => (
-                      <Link
-                        key={publi.publicaciones_id}
-                        href={`/institutoInvestigacion/publicaciones/${publi.publicaciones_id}`}
-                        className="block group"
-                      >
+                      <Link key={publi.publicaciones_id} href={`/institutoInvestigacion/publicaciones/${publi.publicaciones_id}`} className="block group">
                         <div className="bg-card rounded-xl border border-border hover:shadow-xl transition-all hover:-translate-y-1 overflow-hidden">
                           {publi.publicaciones_imagen ? (
                             <div className="relative h-40 bg-muted">
@@ -556,28 +510,24 @@ function InstitutoInvestigacionContent() {
                                 fill
                                 className="object-cover transition-transform group-hover:scale-105"
                                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                                loading="lazy"
                               />
                             </div>
                           ) : (
-                            <div 
-                              className="relative h-40 flex items-center justify-center"
-                              style={{ backgroundColor: `${primaryColor}10` }}
-                            >
-                              <BookOpen className="w-16 h-16" style={{ color: primaryColor }} />
+                            <div className="relative h-40 flex items-center justify-center" style={{ backgroundColor: `${primaryColor}10` }}>
+                              <BookOpen className="w-16 h-16" style={{ color: primaryColor }} aria-hidden="true" />
                             </div>
                           )}
                           <div className="p-5">
-                            <h3 className="text-lg font-bold mb-2 group-hover:text-primary transition-colors line-clamp-2">
-                              {publi.publicaciones_titulo}
-                            </h3>
+                            <h3 className="text-lg font-bold mb-2 group-hover:text-primary transition-colors line-clamp-2">{publi.publicaciones_titulo}</h3>
                             {publi.publicaciones_autor && (
                               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                                <Users className="w-3 h-3" />
+                                <Users className="w-3 h-3" style={{ color: primaryColor }} aria-hidden="true" />
                                 <span>{publi.publicaciones_autor}</span>
                               </div>
                             )}
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <Calendar className="w-3 h-3" />
+                              <Calendar className="w-3 h-3" style={{ color: primaryColor }} aria-hidden="true" />
                               <span>{formatDate(publi.publicaciones_fecha)}</span>
                             </div>
                           </div>
@@ -586,47 +536,33 @@ function InstitutoInvestigacionContent() {
                     ))}
                   </div>
 
-                  {/* Paginación Publicaciones */}
-                  {renderPagination(paginaPublicaciones, totalPaginasPublicaciones, setPaginaPublicaciones)}
+                  {renderPagination(paginaPublicaciones, totalPaginasPublicaciones, (page) => cambiarPagina(setPaginaPublicaciones, page, totalPaginasPublicaciones))}
                   {totalPaginasPublicaciones > 1 && (
-                    <p className="text-center text-sm text-muted-foreground mt-4">
-                      Página {paginaPublicaciones} de {totalPaginasPublicaciones}
-                    </p>
+                    <p className="text-center text-sm text-muted-foreground mt-4">Página {paginaPublicaciones} de {totalPaginasPublicaciones}</p>
                   )}
                 </>
               )}
             </div>
           )}
 
-          {/* EVENTOS */}
           {activeTab === 'eventos' && (
             <div>
               <div className="mb-8">
-                <h2 className="text-3xl font-bold mb-4" style={{ color: primaryColor }}>
-                  Eventos de Investigación
-                </h2>
-                <p className="text-muted-foreground">
-                  Congresos, seminarios, talleres y actividades académicas
-                </p>
+                <h2 className="text-3xl font-bold mb-4" style={{ color: primaryColor }}>Eventos de Investigación</h2>
+                <p className="text-muted-foreground">Congresos, seminarios, talleres y actividades académicas</p>
               </div>
 
               {eventos.length === 0 ? (
                 <div className="text-center py-20">
-                  <Calendar className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                  <Calendar className="w-16 h-16 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
                   <h3 className="text-xl font-bold mb-2">No hay eventos programados</h3>
-                  <p className="text-muted-foreground">
-                    Próximamente se anunciarán nuevos eventos de investigación
-                  </p>
+                  <p className="text-muted-foreground">Próximamente se anunciarán nuevos eventos de investigación</p>
                 </div>
               ) : (
                 <>
                   <div className="space-y-6">
                     {eventosPagina.map((evento) => (
-                      <Link
-                        key={evento.evento_id}
-                        href={`/institutoInvestigacion/eventos/${evento.evento_id}`}
-                        className="block group"
-                      >
+                      <Link key={evento.evento_id} href={`/institutoInvestigacion/eventos/${evento.evento_id}`} className="block group">
                         <div className="bg-card rounded-xl border border-border hover:shadow-xl transition-all hover:-translate-y-1 overflow-hidden">
                           <div className="flex flex-col md:flex-row">
                             {evento.evento_imagen && (
@@ -637,33 +573,29 @@ function InstitutoInvestigacionContent() {
                                   fill
                                   className="object-cover"
                                   sizes="(max-width: 768px) 100vw, 288px"
+                                  loading="lazy"
                                 />
                               </div>
                             )}
                             <div className="flex-1 p-6">
-                              <h3 className="text-xl font-bold mb-3 group-hover:text-primary transition-colors">
-                                {evento.evento_titulo}
-                              </h3>
+                              <h3 className="text-xl font-bold mb-3 group-hover:text-primary transition-colors">{evento.evento_titulo}</h3>
                               {evento.evento_descripcion && (
-                                <p 
-                                  className="text-muted-foreground text-sm mb-4 line-clamp-2"
-                                  dangerouslySetInnerHTML={{ __html: evento.evento_descripcion }}
-                                />
+                                <p className="text-muted-foreground text-sm mb-4 line-clamp-2" dangerouslySetInnerHTML={{ __html: sanitizeHTML(evento.evento_descripcion) }} />
                               )}
                               <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                                 <div className="flex items-center gap-2">
-                                  <Calendar className="w-4 h-4" />
+                                  <Calendar className="w-4 h-4" style={{ color: primaryColor }} aria-hidden="true" />
                                   <span>{formatDate(evento.evento_fecha)}</span>
                                 </div>
                                 {evento.evento_hora && (
                                   <div className="flex items-center gap-2">
-                                    <Target className="w-4 h-4" />
-                                    <span>{evento.evento_hora.substring(0, 5)}</span>
+                                    <Target className="w-4 h-4" style={{ color: primaryColor }} aria-hidden="true" />
+                                    <span>{evento.evento_hora}</span>
                                   </div>
                                 )}
                                 {evento.evento_lugar && (
                                   <div className="flex items-center gap-2">
-                                    <GraduationCap className="w-4 h-4" />
+                                    <GraduationCap className="w-4 h-4" style={{ color: primaryColor }} aria-hidden="true" />
                                     <span>{evento.evento_lugar}</span>
                                   </div>
                                 )}
@@ -675,12 +607,9 @@ function InstitutoInvestigacionContent() {
                     ))}
                   </div>
 
-                  {/* Paginación Eventos */}
-                  {renderPagination(paginaEventos, totalPaginasEventos, setPaginaEventos)}
+                  {renderPagination(paginaEventos, totalPaginasEventos, (page) => cambiarPagina(setPaginaEventos, page, totalPaginasEventos))}
                   {totalPaginasEventos > 1 && (
-                    <p className="text-center text-sm text-muted-foreground mt-4">
-                      Página {paginaEventos} de {totalPaginasEventos}
-                    </p>
+                    <p className="text-center text-sm text-muted-foreground mt-4">Página {paginaEventos} de {totalPaginasEventos}</p>
                   )}
                 </>
               )}
@@ -688,12 +617,9 @@ function InstitutoInvestigacionContent() {
           )}
         </div>
 
-        {/* Líneas de investigación */}
         <div className="bg-muted/50 py-16 border-t">
           <div className="max-w-6xl mx-auto px-4">
-            <h2 className="text-3xl font-bold text-center mb-12" style={{ color: primaryColor }}>
-              Líneas de Investigación
-            </h2>
+            <h2 className="text-3xl font-bold text-center mb-12" style={{ color: primaryColor }}>Líneas de Investigación</h2>
             <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-6">
               {[
                 { icon: Microscope, title: 'Ciencias de la Salud', desc: 'Investigación en salud pública y clínica' },
@@ -706,11 +632,8 @@ function InstitutoInvestigacionContent() {
                 { icon: GraduationCap, title: 'Formación Docente', desc: 'Desarrollo profesional docente' },
               ].map((linea, idx) => (
                 <div key={idx} className="bg-card rounded-xl p-6 border text-center hover:shadow-lg transition-shadow">
-                  <div 
-                    className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
-                    style={{ backgroundColor: `${primaryColor}15` }}
-                  >
-                    <linea.icon className="w-7 h-7" style={{ color: primaryColor }} />
+                  <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: `${primaryColor}15` }}>
+                    <linea.icon className="w-7 h-7" style={{ color: primaryColor }} aria-hidden="true" />
                   </div>
                   <h3 className="font-bold mb-2">{linea.title}</h3>
                   <p className="text-sm text-muted-foreground">{linea.desc}</p>

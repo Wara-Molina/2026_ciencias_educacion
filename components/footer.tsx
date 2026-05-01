@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { 
   Mail, Phone, MapPin, Facebook, Youtube, Twitter, 
-  Linkedin, ExternalLink, BookOpen, GraduationCap
+  ExternalLink, BookOpen, GraduationCap
 } from 'lucide-react';
 
 import api from '@/lib/axios';
@@ -53,6 +53,16 @@ const isLightColor = (hex: string): boolean => {
   return luminance > 0.5;
 };
 
+const isValidUrl = (url: string | undefined): boolean => {
+  if (!url) return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export function Footer() {
   const institucionId = Number(process.env.NEXT_PUBLIC_INSTITUCION_ID) || 12;
   
@@ -87,8 +97,10 @@ export function Footer() {
           setSecondaryColor(instData.colorinstitucion[0].color_secundario || '#FC0102');
           setTertiaryColor(instData.colorinstitucion[0].color_terciario || '#020733');
         }
-      } catch {
-        // Error manejado silenciosamente
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Footer: Error cargando datos', error);
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -114,7 +126,7 @@ export function Footer() {
     { name: 'Facebook', url: institucion?.institucion_facebook, icon: Facebook, color: '#1877F2' },
     { name: 'YouTube', url: institucion?.institucion_youtube, icon: Youtube, color: '#FF0000' },
     { name: 'Twitter/X', url: institucion?.institucion_twitter, icon: Twitter, color: '#1DA1F2' },
-  ].filter(link => link.url && link.url.trim() !== '');
+  ].filter(link => isValidUrl(link.url));
 
   const logoUrl = institucion?.institucion_logo || institucion?.institucion_logo_url;
 
@@ -230,11 +242,23 @@ export function Footer() {
                 <div className={`relative w-20 h-20 ${logoBgClass} rounded-xl p-1.5 shadow-lg mb-3 overflow-hidden`}>
                   {logoUrl ? (
                     <Image
-                      src={getStorageUrl(logoUrl)}
-                      alt={`Logo ${institucion?.institucion_nombre || 'Carrera'}`}
+                      src={logoUrl}
+                      alt={institucion?.institucion_nombre || 'Logo'}
                       fill
-                      className="object-contain"
-                      priority
+                      sizes="(max-width: 768px) 100px, (max-width: 1200px) 150px, 200px"
+                      className="object-contain p-2"
+                      loading="lazy"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.parentElement!.innerHTML = `
+                          <div class="flex items-center justify-center w-full h-full">
+                            <svg class="w-10 h-10 ${textColorDimmedClass}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                          </div>
+                        `;
+                      }}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
@@ -268,7 +292,7 @@ export function Footer() {
               >
                 <div className={`relative w-8 h-8 ${uticBgClass} rounded-full overflow-hidden p-1`}>
                   <Image 
-                    src="/imagenes/logo-utic.png" 
+                    src="/imagenes/logo_utic.png" 
                     alt="UTIC UPEA" 
                     width={32} 
                     height={32}

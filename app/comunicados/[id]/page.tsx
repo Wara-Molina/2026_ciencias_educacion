@@ -13,6 +13,7 @@ import Image from 'next/image';
 import api from '@/lib/axios';
 import { getStorageUrl } from '@/lib/utils';
 import ThemeDynamicProvider from '@/components/providers/ThemeDynamicProvider';
+import { sanitizeHTML, sanitizeText, validateNumericId } from '@/lib/security';
 
 // ==================== TIPOS ====================
 interface Comunicado {
@@ -47,18 +48,22 @@ function ComunicadoDetalleContent() {
   const [institucion, setInstitucion] = useState<InstitucionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // ✅ Estado para modal de imagen
   const [imageModalOpen, setImageModalOpen] = useState(false);
 
   // Fetch datos
   useEffect(() => {
     const fetchComunicado = async () => {
       try {
+        const safeId = validateNumericId(params.id);
+        if (!safeId) {
+          setError('ID de comunicado inválido');
+          setLoading(false);
+          return;
+        }
+        
         setLoading(true);
         setError(null);
         const institucionId = process.env.NEXT_PUBLIC_INSTITUCION_ID || 12;
-        const comunicadoId = params.id;
 
         const [comunicadosRes, instRes] = await Promise.all([
           api.get(`/institucion/${institucionId}/gacetaEventos`),
@@ -66,7 +71,7 @@ function ComunicadoDetalleContent() {
         ]);
 
         const comunicadoEncontrado = comunicadosRes.data.convocatorias?.find(
-          (c: any) => c.idconvocatorias === Number(comunicadoId)
+          (c: any) => c.idconvocatorias === safeId
         );
 
         if (!comunicadoEncontrado) {
@@ -78,8 +83,10 @@ function ComunicadoDetalleContent() {
         setInstitucion(instRes.data.Descripcion);
 
       } catch (err: any) {
-        console.error('❌ Error cargando comunicado:', err);
-        setError('No se pudo cargar la información del comunicado');
+        console.error(' Error cargando comunicado:', err);
+        setError(process.env.NODE_ENV === 'production' 
+          ? 'No se pudo cargar el comunicado' 
+          : 'No se pudo cargar la información del comunicado');
       } finally {
         setLoading(false);
       }
@@ -90,7 +97,6 @@ function ComunicadoDetalleContent() {
     }
   }, [params.id]);
 
-  // ✅ Cerrar modal con tecla ESC + Prevenir scroll
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setImageModalOpen(false);
@@ -107,12 +113,9 @@ function ComunicadoDetalleContent() {
     };
   }, [imageModalOpen]);
 
-  // Colores dinámicos
   const colores = institucion?.colorinstitucion?.[0];
   const primaryColor = colores?.color_primario || '#04246C';
   const secondaryColor = colores?.color_secundario || '#FC0102';
-
-  // Helper para badge de tipo
   const getTipoColor = () => {
     const tipo = comunicado?.tipo_conv_comun?.tipo_conv_comun_titulo?.toUpperCase();
     if (tipo === 'CONVOCATORIAS') return { bg: `${primaryColor}15`, text: primaryColor };
@@ -121,21 +124,25 @@ function ComunicadoDetalleContent() {
     return { bg: `${primaryColor}10`, text: primaryColor };
   };
 
-  // Helper para formatear fechas
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Por definir';
     return new Date(dateString).toLocaleDateString('es-BO', {
       year: 'numeric', month: 'long', day: 'numeric'
     });
   };
-
-  // Share handler
   const handleShare = async () => {
+    if (!comunicado) return;
+    const safeTitle = sanitizeText(comunicado.con_titulo, 150);
+    const safeDescription = sanitizeText(
+      comunicado.con_descripcion?.replace(/<[^>]*>/g, '') || '', 
+      300
+    );
+    
     if (navigator.share) {
       try {
         await navigator.share({
-          title: comunicado?.con_titulo,
-          text: comunicado?.con_descripcion?.replace(/<[^>]*>/g, '') || '',
+          title: safeTitle,
+          text: safeDescription,
           url: window.location.href,
         });
       } catch (err) {
@@ -143,15 +150,13 @@ function ComunicadoDetalleContent() {
       }
     } else {
       navigator.clipboard.writeText(window.location.href);
-      alert('¡Enlace copiado al portapapeles!');
+      alert('Enlace copiado');
     }
   };
 
-  // ✅ Funciones para manejar el modal
   const openImageModal = () => setImageModalOpen(true);
   const closeImageModal = () => setImageModalOpen(false);
 
-  // ==================== RENDER LOADING ====================
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -163,7 +168,6 @@ function ComunicadoDetalleContent() {
     );
   }
 
-  // ==================== RENDER ERROR ====================
   if (error || !comunicado) {
     return (
       <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor }}>
@@ -199,8 +203,7 @@ function ComunicadoDetalleContent() {
   return (
     <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor }}>
       <div className="min-h-screen bg-background">
-        
-        {/* 🖼️ Header con imagen - Click para abrir modal */}
+
         <div 
           className="relative h-48 md:h-64 group cursor-pointer"
           onClick={openImageModal}
@@ -209,14 +212,13 @@ function ComunicadoDetalleContent() {
             <>
               <Image
                 src={imageUrl}
-                alt={comunicado.con_titulo}
+                alt={sanitizeText(comunicado.con_titulo, 150)} 
                 fill
                 className="object-cover transition-transform duration-500 group-hover:scale-105"
                 priority
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-              
-              {/* ✅ Overlay con indicador de zoom (igual que en cursos) */}
+
               <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 bg-black/40 backdrop-blur-[2px]">
                 <div className="text-center transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
                   <div className="bg-white/90 backdrop-blur-md rounded-full p-4 shadow-2xl mb-3 inline-flex items-center gap-2">
@@ -228,8 +230,6 @@ function ComunicadoDetalleContent() {
                   </p>
                 </div>
               </div>
-
-              {/* Badge flotante siempre visible en móvil */}
               <div className="absolute bottom-4 right-4 md:hidden">
                 <div className="bg-white/90 backdrop-blur-md rounded-full p-2 shadow-lg">
                   <ZoomIn className="w-5 h-5" style={{ color: primaryColor }} />
@@ -247,7 +247,6 @@ function ComunicadoDetalleContent() {
             </div>
           )}
 
-          {/* Botón volver - Con stopPropagation */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -259,7 +258,6 @@ function ComunicadoDetalleContent() {
             Volver
           </button>
 
-          {/* Botón compartir - Con stopPropagation */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -272,13 +270,12 @@ function ComunicadoDetalleContent() {
           </button>
         </div>
 
-        {/* ✅ MODAL DE IMAGEN COMPLETA - Estilo Cursos */}
         {imageModalOpen && comunicado.con_foto_portada && (
           <div 
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm"
             onClick={closeImageModal}
           >
-            {/* Botón cerrar - ESQUINA SUPERIOR DERECHA */}
+
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -292,8 +289,6 @@ function ComunicadoDetalleContent() {
                 Cerrar
               </span>
             </button>
-            
-            {/* Botón cerrar - ESQUINA SUPERIOR IZQUIERDA */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -304,8 +299,6 @@ function ComunicadoDetalleContent() {
               <ArrowLeft className="w-6 h-6 text-white" />
               <span className="text-white text-sm font-medium hidden sm:inline">Volver</span>
             </button>
-
-            {/* Imagen - Compacta y centrada */}
             <div 
               className="relative w-full h-full flex items-center justify-center p-4"
               onClick={(e) => e.stopPropagation()}
@@ -313,14 +306,13 @@ function ComunicadoDetalleContent() {
               <div className="relative w-full max-w-md max-h-[80vh] sm:max-h-[100vh]">
                 <Image
                   src={imageUrl}
-                  alt={comunicado.con_titulo}
+                  alt={sanitizeText(comunicado.con_titulo, 150)} 
                   width={600}
                   height={400}
                   className="w-full h-full object-contain rounded-lg shadow-2xl"
                   unoptimized
                 />
-                
-                {/* Indicador de cerrar */}
+
                 <div className="absolute -bottom-10 left-0 right-0 text-center hidden sm:block">
                   <p className="text-white/60 text-xs">
                     Click fuera o ESC para cerrar
@@ -329,31 +321,27 @@ function ComunicadoDetalleContent() {
               </div>
             </div>
 
-            {/* Título del comunicado */}
             <div className="absolute bottom-8 left-0 right-0 text-center pointer-events-none">
               <p className="text-white text-lg font-semibold bg-black/60 backdrop-blur-md inline-block px-6 py-3 rounded-full">
-                {comunicado.con_titulo}
+                {sanitizeText(comunicado.con_titulo, 100)}
               </p>
             </div>
           </div>
         )}
 
-        {/* 📄 Contenido */}
         <div className="max-w-4xl mx-auto px-4 -mt-16 relative z-10 pb-20">
           <div className="bg-card rounded-2xl shadow-xl border overflow-hidden">
             
             <div className="p-6 md:p-8">
-              {/* Badge de tipo */}
+
               <span 
                 className="inline-block px-4 py-1.5 rounded-full text-xs font-semibold mb-4 uppercase tracking-wide"
                 style={{ backgroundColor: colors.bg, color: colors.text }}
               >
                 {tipoLabel.charAt(0) + tipoLabel.slice(1).toLowerCase()}
               </span>
-
-              {/* Título */}
               <h1 className="text-3xl md:text-4xl font-bold mb-6 text-foreground">
-                {comunicado.con_titulo}
+                {sanitizeText(comunicado.con_titulo, 200)}
               </h1>
 
               {/* Fechas */}
@@ -374,11 +362,12 @@ function ComunicadoDetalleContent() {
                 </div>
               )}
 
-              {/* Descripción */}
               {comunicado.con_descripcion && (
                 <div 
                   className="prose prose-lg max-w-none text-muted-foreground leading-relaxed mb-8"
-                  dangerouslySetInnerHTML={{ __html: comunicado.con_descripcion }}
+                  dangerouslySetInnerHTML={{ 
+                    __html: sanitizeHTML(comunicado.con_descripcion) 
+                  }}
                 />
               )}
 
@@ -393,8 +382,6 @@ function ComunicadoDetalleContent() {
                     <Download className="w-4 h-4" />
                     Imprimir
                   </button>
-                  
-                  {/* Botón para abrir modal */}
                   {imageUrl && (
                     <button
                       onClick={openImageModal}
@@ -436,7 +423,6 @@ function ComunicadoDetalleContent() {
   );
 }
 
-// ==================== WRAPPER CON SUSPENSE ====================
 export default function ComunicadoDetallePage() {
   return (
     <Suspense fallback={

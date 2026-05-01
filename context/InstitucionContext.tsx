@@ -54,7 +54,7 @@ export const InstitucionProvider = ({
           institucion_logo_url: getStorageUrl(inst.institucion_logo),
         });
       } catch (err: any) {
-        console.error('❌ Error cargando institución:', err);
+        console.error('Error cargando institución:', err);
         setError(err.message || 'Error al cargar datos');
       } finally {
         setLoading(false);

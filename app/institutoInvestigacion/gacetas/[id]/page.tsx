@@ -1,7 +1,7 @@
 // app/institutoInvestigacion/gacetas/[id]/page.tsx
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { 
   ArrowLeft, Calendar, Download, FileText, ExternalLink,
@@ -11,6 +11,7 @@ import Link from 'next/link';
 
 import api from '@/lib/axios';
 import { getStorageUrl } from '@/lib/utils';
+import { sanitizeHTML } from '@/lib/sanitize'; 
 import ThemeDynamicProvider from '@/components/providers/ThemeDynamicProvider';
 
 // ==================== TIPOS ====================
@@ -30,13 +31,45 @@ interface InstitucionData {
   }>;
 }
 
+const isValidDocumentUrl = (url: string | undefined): boolean => {
+  if (!url) return false;
+  try {
+    const urlToParse = url.startsWith('http') ? url : `https://${url}`;
+    const parsed = new URL(urlToParse);
+
+    const validProtocol = ['https:'].includes(parsed.protocol);
+    const safeDomain = parsed.hostname.includes('upea.bo') || 
+                      parsed.hostname.includes('localhost') ||
+                      parsed.hostname.includes('127.0.0.1');
+
+    const safePath = !parsed.pathname.includes('<') && 
+                    !parsed.pathname.includes('>') &&
+                    !parsed.pathname.includes('javascript:');
+    return validProtocol && safeDomain && safePath;
+  } catch {
+    return false;
+  }
+};
+
+const sanitizeTextField = (text: string | undefined, maxLength = 300): string => {
+  if (!text) return '';
+  return sanitizeHTML(text)
+    .replace(/<[^>]*>/g, '')  
+    .trim()
+    .slice(0, maxLength);
+};
+
 // ==================== COMPONENTE ====================
 function GacetaInvestigacionDetalleContent() {
   const params = useParams();
   const router = useRouter();
-  
-  const gacetaId = Number(params.id);
-  if (isNaN(gacetaId)) {
+
+  const rawGacetaId = Number(params.id);
+  const gacetaId = Number.isInteger(rawGacetaId) && rawGacetaId > 0 && rawGacetaId < 10000000 
+    ? rawGacetaId 
+    : null;
+
+  if (gacetaId === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -65,14 +98,13 @@ function GacetaInvestigacionDetalleContent() {
     const fetchGaceta = async () => {
       try {
         setLoading(true);
-        const [gacetaRes, instRes] = await Promise.all([
-          api.get(`/institucion/${institucionId}/gacetaEventos`),
-          api.get(`/institucionesPrincipal/${institucionId}`)
-        ]);
+       const [gacetaRes, instRes] = await Promise.all([
+  api.get(`/institucion/${institucionId}/gacetaEventos`),
+  api.get(`/institucionesPrincipal/${institucionId}`)       
+]);
 
         if (!isMounted) return;
 
-        //  Función helper robusta para filtrar "INSTITUTO DE INVESTIGACION"
         const esTipoInvestigacion = (valor: any): boolean => {
           if (!valor) return false;
           const normalized = String(valor)
@@ -89,30 +121,38 @@ function GacetaInvestigacionDetalleContent() {
                  (normalized.includes('INSTITUTO') && normalized.includes('INVESTIGACION'));
         };
 
-        // ✅ Buscar gaceta con filtrado robusto
         const encontrada = gacetaRes.data.upea_gaceta_universitaria?.find(
           (g: any) => g.gaceta_id === gacetaId && esTipoInvestigacion(g.gaceta_tipo)
         );
 
         if (encontrada) {
+
           setGaceta({
             gaceta_id: encontrada.gaceta_id,
-            gaceta_titulo: encontrada.gaceta_titulo || 'Sin título',
+            gaceta_titulo: sanitizeTextField(encontrada.gaceta_titulo, 200),
             gaceta_fecha: encontrada.gaceta_fecha,
             gaceta_documento: encontrada.gaceta_documento,
-            gaceta_tipo: 'INSTITUTO DE INVESTIGACION'
+            gaceta_tipo: sanitizeTextField(encontrada.gaceta_tipo, 50)
           });
           
           if (instRes.data.Descripcion?.colorinstitucion?.[0]) {
-            setPrimaryColor(instRes.data.Descripcion.colorinstitucion[0].color_primario || '#04246C');
-            setSecondaryColor(instRes.data.Descripcion.colorinstitucion[0].color_secundario || '#FC0102');
+            const colors = instRes.data.Descripcion.colorinstitucion[0];
+
+            setPrimaryColor(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(colors.color_primario) ? colors.color_primario : '#04246C');
+            setSecondaryColor(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(colors.color_secundario) ? colors.color_secundario : '#FC0102');
           }
           setInstitucion(instRes.data.Descripcion || null);
         } else {
           setError('Gaceta no encontrada o no pertenece al Instituto de Investigación');
         }
       } catch (err) {
-        if (isMounted) setError('Error al cargar el documento');
+        if (isMounted) {
+
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(' GacetaDetalle: Error cargando datos', err);
+          }
+          setError('Error al cargar el documento');
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -122,7 +162,11 @@ function GacetaInvestigacionDetalleContent() {
     return () => { isMounted = false; };
   }, [gacetaId, institucionId]);
 
-  const documentoUrl = gaceta?.gaceta_documento ? getStorageUrl(gaceta.gaceta_documento) : '';
+  const documentoUrl = useMemo(() => {
+    if (!gaceta?.gaceta_documento) return '';
+    const url = getStorageUrl(gaceta.gaceta_documento);
+    return isValidDocumentUrl(url) ? url : '';
+  }, [gaceta?.gaceta_documento]);
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'Fecha no disponible';
@@ -169,20 +213,21 @@ function GacetaInvestigacionDetalleContent() {
     <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor }}>
       <div className="min-h-screen bg-background flex flex-col">
         
-        {/* Header MOVIDO MÁS ABAJO - mt-8 en móvil, mt-12 en desktop */}
+        {/* Header */}
         <div className="bg-card border-b px-4 py-4 mt-8 sm:mt-12">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button 
                 onClick={() => router.back()} 
                 className="p-2 hover:bg-muted rounded-lg transition-colors"
+                aria-label="Volver a la página anterior"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
                 <h1 className="font-bold text-lg line-clamp-1">{gaceta.gaceta_titulo}</h1>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Calendar className="w-3 h-3" />
+                  <Calendar className="w-3 h-3" aria-hidden="true" />
                   <span>{formatDate(gaceta.gaceta_fecha)}</span>
                   {gaceta.gaceta_tipo && (
                     <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs">
@@ -201,7 +246,7 @@ function GacetaInvestigacionDetalleContent() {
                   rel="noopener noreferrer"
                   className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm bg-primary text-white hover:opacity-90 transition-opacity"
                 >
-                  <ExternalLink className="w-4 h-4" />
+                  <ExternalLink className="w-4 h-4" aria-hidden="true" />
                   Abrir
                 </a>
                 <a 
@@ -210,7 +255,7 @@ function GacetaInvestigacionDetalleContent() {
                   className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm border hover:bg-muted transition-colors"
                   style={{ borderColor: primaryColor }}
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-4 h-4" aria-hidden="true" />
                   Descargar
                 </a>
               </div>
@@ -218,19 +263,19 @@ function GacetaInvestigacionDetalleContent() {
           </div>
         </div>
 
-        {/* Visor de PDF - Altura ajustada */}
         <div className="flex-1 bg-muted/30 p-2 sm:p-4">
           {documentoUrl ? (
             <div className="max-w-7xl mx-auto h-[calc(100vh-160px)] bg-white rounded-lg shadow-lg overflow-hidden">
-              <iframe
-                src={`${documentoUrl}#toolbar=1`}
-                className="w-full h-full border-0"
-                title={`Visor de ${gaceta.gaceta_titulo}`}
-              />
+<iframe
+  src={`${documentoUrl}#toolbar=1`}
+  className="w-full h-full border-0"
+  title={`Visor de ${gaceta.gaceta_titulo}`}
+  loading="lazy"
+/>
             </div>
           ) : (
             <div className="max-w-7xl mx-auto h-96 flex flex-col items-center justify-center bg-white rounded-lg">
-              <FileText className="w-20 h-20 text-muted-foreground mb-4" />
+              <FileText className="w-20 h-20 text-muted-foreground mb-4" aria-hidden="true" />
               <p className="text-muted-foreground text-center">
                 Esta gaceta no tiene documento adjunto disponible
               </p>
@@ -246,8 +291,9 @@ function GacetaInvestigacionDetalleContent() {
               download
               className="flex items-center justify-center w-14 h-14 rounded-full bg-primary text-white shadow-xl"
               style={{ backgroundColor: primaryColor }}
+              aria-label="Descargar documento"
             >
-              <Download className="w-6 h-6" />
+              <Download className="w-6 h-6" aria-hidden="true" />
             </a>
            )}
         </div>

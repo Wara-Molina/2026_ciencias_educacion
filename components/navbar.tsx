@@ -51,6 +51,16 @@ const isLightColor = (hex: string): boolean => {
   return luminance > 0.5;
 };
 
+const isValidUrl = (url: string | undefined): boolean => {
+  if (!url) return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export function Navbar() {
   const { institucion, loading: institucionLoading } = useInstitucion();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -74,12 +84,13 @@ export function Navbar() {
   const textColorClass = isLightBackground ? 'text-gray-900' : 'text-white';
   const textColorHoverClass = isLightBackground ? 'hover:text-gray-700' : 'hover:text-white';
   const textColorMutedClass = isLightBackground ? 'text-gray-600' : 'text-white/70';
+  const textColorDimmedClass = isLightBackground ? 'text-gray-500' : 'text-white/60';
   const borderColorClass = isLightBackground ? 'border-gray-200' : 'border-white/10';
   const hoverBgClass = isLightBackground ? 'hover:bg-gray-100' : 'hover:bg-white/10';
   const dropdownBgClass = isLightBackground ? 'bg-white' : tertiaryColor;
   const dropdownTextClass = isLightBackground ? 'text-gray-700 hover:text-gray-900 hover:bg-gray-100' : 'text-white/90 hover:text-white hover:bg-white/10';
 
-  const logoUrl = institucion?.institucion_logo_url || '/imagenes/logo-default.png';
+  const logoUrl = institucion?.institucion_logo || '/imagenes/logo-default.png';
 
   useEffect(() => {
     const fetchDynamicItems = async () => {
@@ -165,8 +176,10 @@ export function Navbar() {
         }
         
         setInvestigacionItems(investigacion);
-      } catch {
-        // Error manejado silenciosamente para no exponer detalles
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(' Navbar: Error cargando items dinámicos', error);
+        }
       } finally {
         setLoading(false);
       }
@@ -275,11 +288,11 @@ export function Navbar() {
         return <div key={idx} className={`my-1 border-t ${borderColorClass}`} />;
       }
       
-      if (item.external) {
+      if (item.external && isValidUrl(item.href)) {
         return (
           <a
             key={idx}
-            href={item.href || '#'}
+            href={item.href}
             target="_blank"
             rel="noopener noreferrer"
             className={`block px-4 py-2.5 text-sm transition-colors flex items-center justify-between ${dropdownTextClass}`}
@@ -328,13 +341,29 @@ export function Navbar() {
                     src={logoUrl}
                     alt={institucion?.institucion_nombre || 'Logo'}
                     fill
+                    sizes="(max-width: 768px) 100px, (max-width: 1200px) 150px, 200px"
                     className="object-contain p-2"
                     priority
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                      target.parentElement!.innerHTML = '<div class="flex items-center justify-center w-full h-full text-3xl">🎓</div>';
-                    }}
+onError={(e) => {
+  const imgElement = e.currentTarget;
+  
+  // Ocultar la imagen fallida
+  imgElement.style.display = 'none';
+  
+  // Crear fallback seguro
+  const fallback = document.createElement('div');
+  fallback.className = `flex items-center justify-center w-full h-full ${textColorDimmedClass}`;
+  fallback.innerHTML = `
+    <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/>
+    </svg>
+  `;
+  
+  // Insertar fallback después de la imagen
+  if (imgElement.parentElement) {
+    imgElement.parentElement.appendChild(fallback);
+  }
+}}
                   />
                 </div>
               )}
@@ -368,6 +397,9 @@ export function Navbar() {
                       onMouseEnter={() => handleDropdownEnter(item.label)}
                       onMouseLeave={handleDropdownLeave}
                       onClick={() => toggleDropdown(item.label)}
+                      aria-expanded={openDropdown === item.label}
+                      aria-haspopup="true"
+                      aria-controls={`dropdown-${item.label}`}
                     >
                       {item.label}
                       <ChevronDown 
@@ -379,6 +411,8 @@ export function Navbar() {
                     
                     {item.items && openDropdown === item.label && (
                       <div 
+                        id={`dropdown-${item.label}`}
+                        role="menu"
                         className={`absolute top-full left-0 mt-0 w-56 rounded-lg shadow-xl py-2 z-50 max-h-96 overflow-y-auto border ${borderColorClass}`}
                         style={{ backgroundColor: dropdownBgClass }}
                         onMouseEnter={() => handleDropdownEnter(item.label)}
@@ -492,12 +526,14 @@ export function Navbar() {
                     <button
                       className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium rounded-lg ${textColorClass} ${hoverBgClass}`}
                       onClick={() => toggleDropdown(item.label)}
+                      aria-expanded={openDropdown === item.label}
+                      aria-haspopup="true"
                     >
                       {item.label}
                       <ChevronDown className={`w-4 h-4 transition-transform ${openDropdown === item.label ? 'rotate-180' : ''} ${isLightBackground ? 'text-gray-600' : 'text-white/70'}`} />
                     </button>
                     {openDropdown === item.label && item.items && (
-                      <div className="ml-4 mt-1 space-y-1 pb-2">
+                      <div className="ml-4 mt-1 space-y-1 pb-2" role="menu">
                         {renderDropdownItems(item.items, true)}
                       </div>
                     )}

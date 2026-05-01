@@ -1,7 +1,7 @@
 // app/contacto/page.tsx
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useRef } from 'react';
 import { 
   MapPin, Phone, Mail, Clock, Send, Loader2, ArrowLeft,
   Facebook, Twitter, Instagram, Linkedin, Youtube, CheckCircle
@@ -10,6 +10,13 @@ import Link from 'next/link';
 
 import api from '@/lib/axios';
 import ThemeDynamicProvider from '@/components/providers/ThemeDynamicProvider';
+import { 
+  sanitizeText, 
+  sanitizeExternalUrl, 
+  validateGoogleMapsUrl,
+  sanitizeFormInput,
+  ClientRateLimiter 
+} from '@/lib/security';
 
 // ==================== TIPOS ====================
 interface ColorInstitucion {
@@ -42,6 +49,7 @@ interface FormData {
   email: string;
   asunto: string;
   mensaje: string;
+  website?: string;
 }
 
 interface FormErrors {
@@ -64,11 +72,13 @@ function ContactoContent() {
     nombre: '',
     email: '',
     asunto: '',
-    mensaje: ''
+    mensaje: '',
+    website: '' 
   });
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const lastSubmitRef = useRef<number>(0);
   
   // Colores dinámicos
   const [primaryColor, setPrimaryColor] = useState('#04246C');
@@ -96,8 +106,10 @@ function ContactoContent() {
         }
       } catch (err: any) {
         if (isMounted) {
-          console.error('❌ Error cargando contacto:', err);
-          setError('No se pudieron cargar los datos de contacto.');
+          console.error(' Error cargando contacto:', err);
+          setError(process.env.NODE_ENV === 'production' 
+            ? 'No se pudieron cargar los datos de contacto.' 
+            : 'No se pudieron cargar los datos de contacto.');
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -108,28 +120,39 @@ function ContactoContent() {
     return () => { isMounted = false; };
   }, [institucionId]);
 
-  // ==================== VALIDACIÓN DE FORMULARIO ====================
   const validateForm = (): boolean => {
     const errors: FormErrors = {};
+    if (formData.website && formData.website.trim() !== '') {
+      console.warn('Posible bot detectado (honeypot)');
+      return false;
+    }
     
     if (!formData.nombre.trim()) {
       errors.nombre = 'El nombre es requerido';
+    } else if (formData.nombre.length > 100) {
+      errors.nombre = 'El nombre es demasiado largo';
     }
     
     if (!formData.email.trim()) {
       errors.email = 'El email es requerido';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       errors.email = 'Ingresa un email válido';
+    } else if (formData.email.length > 255) {
+      errors.email = 'El email es demasiado largo';
     }
     
     if (!formData.asunto.trim()) {
       errors.asunto = 'El asunto es requerido';
+    } else if (formData.asunto.length > 200) {
+      errors.asunto = 'El asunto es demasiado largo';
     }
     
     if (!formData.mensaje.trim()) {
       errors.mensaje = 'El mensaje es requerido';
     } else if (formData.mensaje.length < 10) {
       errors.mensaje = 'El mensaje debe tener al menos 10 caracteres';
+    } else if (formData.mensaje.length > 2000) {
+      errors.mensaje = 'El mensaje es demasiado largo';
     }
     
     setFormErrors(errors);
@@ -139,9 +162,11 @@ function ContactoContent() {
   // ==================== HANDLERS ====================
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const sanitizedValue = name === 'mensaje' 
+      ? sanitizeFormInput(value, 2000) 
+      : sanitizeFormInput(value, 255);
     
-    // Limpiar error al escribir
+    setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
     if (formErrors[name as keyof FormErrors]) {
       setFormErrors(prev => ({ ...prev, [name]: undefined }));
     }
@@ -149,29 +174,18 @@ function ContactoContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const clientKey = `contact_form_${institucionId}`;
+    if (!ClientRateLimiter.allow(clientKey, 1, 10000)) {
+      setError('Por favor espera unos segundos antes de enviar otro mensaje.');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
     
     if (!validateForm()) return;
     
     setIsSubmitting(true);
-    
-    try {
-      // ✅ Aquí iría la llamada a tu API para enviar el formulario
-      // await api.post('/contacto', { ...formData, institucionId });
-      
-      // Simular envío exitoso
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setSubmitSuccess(true);
-      setFormData({ nombre: '', email: '', asunto: '', mensaje: '' });
-      
-      // Resetear mensaje de éxito después de 5 segundos
-      setTimeout(() => setSubmitSuccess(false), 5000);
-    } catch (err) {
-      console.error('❌ Error enviando formulario:', err);
-      setError('No se pudo enviar el mensaje. Intente más tarde.');
-    } finally {
-      setIsSubmitting(false);
-    }
+    setError(null);
+
   };
 
   // Helpers
@@ -183,9 +197,18 @@ function ContactoContent() {
     { name: 'YouTube', url: institucion?.institucion_youtube, icon: Youtube, color: '#FF0000' },
     { name: 'Instagram', url: null, icon: Instagram, color: '#E4405F' },
     { name: 'LinkedIn', url: null, icon: Linkedin, color: '#0A66C2' },
-  ].filter(link => link.url && link.url.trim() !== '');
+  ]
+    .filter(link => link.url && link.url.trim() !== '')
+    .map(link => ({
+      ...link,
+      safeUrl: sanitizeExternalUrl(link.url, [
+        'facebook.com', 'twitter.com', 'x.com', 'youtube.com', 
+        'instagram.com', 'linkedin.com', 'youtu.be'
+      ])
+    }))
+    .filter(link => link.safeUrl); 
+  const safeMapsUrl = validateGoogleMapsUrl(institucion?.institucion_api_google_map);
 
-  // ==================== RENDER LOADING ====================
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -200,7 +223,7 @@ function ContactoContent() {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="text-center max-w-md">
           <div className="text-5xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold mb-2">Error de conexión</h2>
+          <h2 className="text-2xl font-bold mb-2">Error</h2>
           <p className="text-muted-foreground mb-6">{error}</p>
           <button 
             onClick={() => window.location.reload()}
@@ -217,8 +240,7 @@ function ContactoContent() {
   return (
     <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor, tertiary: tertiaryColor }}>
       <div className="min-h-screen bg-background">
-        
-        {/* 🎨 Header Elegante con Degradado */}
+
         <section className="relative py-20 overflow-hidden">
           <div 
             className="absolute inset-0"
@@ -272,7 +294,7 @@ function ContactoContent() {
             <p className="text-lg md:text-xl text-white/90 max-w-3xl leading-relaxed">
               Estamos aquí para ayudarte. Escríbenos, llámanos o visítanos en{' '}
               <span className="font-semibold text-white">
-                {institucion?.institucion_nombre || 'nuestra institución'}
+                {sanitizeText(institucion?.institucion_nombre || 'nuestra institución', 100)}
               </span>
             </p>
           </div>
@@ -282,19 +304,16 @@ function ContactoContent() {
         <section className="py-16 bg-background">
           <div className="max-w-6xl mx-auto px-4">
             <div className="grid lg:grid-cols-2 gap-12">
-              
-              {/* ==================== COLUMNA IZQUIERDA ==================== */}
+
               <div className="space-y-8">
-                
-                {/* Información de Contacto */}
+
                 <div className="bg-card rounded-2xl p-8 border shadow-lg">
                   <h2 className="text-2xl font-bold mb-6" style={{ color: primaryColor }}>
                     Información de Contacto
                   </h2>
                   
                   <div className="space-y-6">
-                    
-                    {/* Dirección */}
+
                     {institucion?.institucion_direccion && (
                       <div className="flex items-start gap-4">
                         <div 
@@ -306,13 +325,12 @@ function ContactoContent() {
                         <div>
                           <h3 className="font-semibold mb-1">Dirección</h3>
                           <p className="text-muted-foreground">
-                            {institucion.institucion_direccion}
+                            {sanitizeText(institucion.institucion_direccion, 300)}
                           </p>
                         </div>
                       </div>
                     )}
 
-                    {/* Teléfonos */}
                     {(institucion?.institucion_celular1 || institucion?.institucion_telefono1) && (
                       <div className="flex items-start gap-4">
                         <div 
@@ -350,7 +368,6 @@ function ContactoContent() {
                       </div>
                     )}
 
-                    {/* Emails */}
                     {(institucion?.institucion_correo1 || institucion?.institucion_correo2) && (
                       <div className="flex items-start gap-4">
                         <div 
@@ -362,20 +379,22 @@ function ContactoContent() {
                         <div>
                           <h3 className="font-semibold mb-1">Correos Electrónicos</h3>
                           <div className="space-y-1">
-                            {institucion.institucion_correo1 && (
+                            {institucion.institucion_correo1 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(institucion.institucion_correo1) && (
                               <a 
-                                href={`mailto:${institucion.institucion_correo1}`}
+                                href={`mailto:${sanitizeText(institucion.institucion_correo1, 255)}`}
                                 className="block text-muted-foreground hover:text-primary transition-colors"
                               >
-                                {institucion.institucion_correo1}
+                                {sanitizeText(institucion.institucion_correo1, 255)}
                               </a>
                             )}
-                            {institucion.institucion_correo2 && institucion.institucion_correo2 !== institucion.institucion_correo1 && (
+                            {institucion.institucion_correo2 && 
+                             institucion.institucion_correo2 !== institucion.institucion_correo1 &&
+                             /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(institucion.institucion_correo2) && (
                               <a 
-                                href={`mailto:${institucion.institucion_correo2}`}
+                                href={`mailto:${sanitizeText(institucion.institucion_correo2, 255)}`}
                                 className="block text-muted-foreground hover:text-primary transition-colors"
                               >
-                                {institucion.institucion_correo2}
+                                {sanitizeText(institucion.institucion_correo2, 255)}
                               </a>
                             )}
                           </div>
@@ -383,7 +402,6 @@ function ContactoContent() {
                       </div>
                     )}
 
-                    {/* Horario */}
                     <div className="flex items-start gap-4">
                       <div 
                         className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
@@ -394,20 +412,17 @@ function ContactoContent() {
                       <div>
                         <h3 className="font-semibold mb-1">Horario de Atención</h3>
                         <p className="text-muted-foreground">
-                          {institucion?.institucion_horario_atencion || 'Lunes a Viernes: 8:00 - 12:00 y 14:00 - 18:00'}
+                          {sanitizeText(institucion?.institucion_horario_atencion || 'Lunes a Viernes: 8:00 - 12:00 y 14:00 - 18:00', 200)}
                         </p>
                       </div>
                     </div>
                   </div>
                 </div>
 
-
               </div>
 
-              {/* ==================== COLUMNA DERECHA ==================== */}
               <div className="space-y-8">
-                
-                {/* ✅ Redes Sociales */}
+
                 {socialLinks.length > 0 && (
                   <div className="bg-card rounded-2xl p-8 border shadow-lg">
                     <h3 className="text-xl font-bold mb-4" style={{ color: primaryColor }}>
@@ -417,7 +432,7 @@ function ContactoContent() {
                       {socialLinks.map((social) => (
                         <a
                           key={social.name}
-                          href={social.url || '#'}
+                          href={social.safeUrl || '#'}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-3 rounded-xl bg-muted hover:bg-muted/80 transition-colors group"
@@ -431,8 +446,7 @@ function ContactoContent() {
                   </div>
                 )}
 
-                {/* ✅ Mapa de Ubicación */}
-                {institucion?.institucion_api_google_map && (
+                {safeMapsUrl && (
                   <div className="bg-card rounded-2xl overflow-hidden border shadow-lg">
                     <div className="p-4 border-b">
                       <h3 className="font-bold flex items-center gap-2" style={{ color: primaryColor }}>
@@ -441,7 +455,7 @@ function ContactoContent() {
                       </h3>
                     </div>
                     <iframe
-                      src={institucion.institucion_api_google_map}
+                      src={safeMapsUrl}
                       width="100%"
                       height="350"
                       style={{ border: 0 }}
@@ -450,11 +464,12 @@ function ContactoContent() {
                       referrerPolicy="no-referrer-when-downgrade"
                       className="w-full"
                       title="Ubicación de la institución"
+                      sandbox="allow-scripts allow-same-origin"
                     />
                     {/* Botón de directions */}
                     <div className="p-4 border-t">
                       <a
-                        href={`https://www.google.com/maps/dir/?api=1&destination=${institucion.institucion_direccion || ''}`}
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(sanitizeText(institucion?.institucion_direccion || '', 200))}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 w-full justify-center px-4 py-2 rounded-lg font-medium text-white transition-all hover:shadow-md"
@@ -466,7 +481,6 @@ function ContactoContent() {
                     </div>
                   </div>
                 )}
-
 
               </div>
 
