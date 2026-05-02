@@ -9,12 +9,11 @@ export const sanitizeHTML = (
     allowAria?: boolean;
   }
 ): string => {
-  // ✅ 1. VALIDAR INPUT
+
   if (!html || typeof html !== 'string') {
     return '';
   }
 
-  // ✅ 2. CONFIGURACIÓN DE SEGURIDAD (sin tipo explícito)
   const config = {
     ALLOWED_TAGS: [
       'p', 'br', 'strong', 'em', 'u', 'ul', 'ol', 'li', 
@@ -54,16 +53,13 @@ export const sanitizeHTML = (
     SAFE_FOR_TEMPLATES: true,
   };
 
-  // ✅ 3. SANITIZAR HTML
   try {
     const sanitized = DOMPurify.sanitize(html, config);
-    
-    // ✅ CONVERTIR a string
+
     const sanitizedString = typeof sanitized === 'string' 
       ? sanitized 
       : String(sanitized);
-    
-    // ✅ 4. POST-PROCESAMIENTO: Forzar rel="noopener noreferrer"
+
     if (typeof window !== 'undefined') {
       const parser = new DOMParser();
       const doc = parser.parseFromString(sanitizedString, 'text/html');
@@ -132,7 +128,7 @@ export const sanitizeHref = (href: string | null | undefined): string => {
   );
   
   if (!isAllowed) {
-    console.warn('⚠️ URL bloqueada:', href);
+    console.warn(' URL bloqueada:', href);
     return '';
   }
   
@@ -145,7 +141,7 @@ export const sanitizeHref = (href: string | null | undefined): string => {
   ];
   
   if (dangerousPatterns.some(pattern => pattern.test(trimmed))) {
-    console.warn('⚠️ URL peligrosa bloqueada:', href);
+    console.warn('URL peligrosa bloqueada:', href);
     return '';
   }
   

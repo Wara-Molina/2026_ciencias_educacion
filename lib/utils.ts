@@ -2,8 +2,6 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import DOMPurify from 'dompurify';
-
-// ✅ Función cn para combinar clases de Tailwind (shadcn/ui style)
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
@@ -17,7 +15,6 @@ const STORAGE_DOMAINS = (process.env.NEXT_PUBLIC_ALLOWED_STORAGE_DOMAINS || '')
 
 const STORAGE_BASE = process.env.NEXT_PUBLIC_STORAGE_URL || 'https://archivosminio.upea.bo/archivospaginasnode';
 
-// ✅ Construir URL para archivos de MinIO
 export const getStorageUrl = (file: string | null | undefined, type: 'imagenes' | 'documentos' = 'imagenes'): string => {
   if (!file) return '';
   
@@ -29,7 +26,6 @@ export const getStorageUrl = (file: string | null | undefined, type: 'imagenes' 
   return `${STORAGE_BASE}/${type}/${cleanFile}`;
 };
 
-// ✅ Sanitizar texto para display seguro
 export const sanitizeText = (text: string | null | undefined, maxLength = 500): string => {
   if (!text) return '';
   return text
@@ -39,7 +35,6 @@ export const sanitizeText = (text: string | null | undefined, maxLength = 500): 
     .trim();
 };
 
-// ✅ Extraer texto plano de HTML
 export const extractPlainText = (html: string | null | undefined): string => {
   if (!html) return '';
   if (typeof window !== 'undefined') {
@@ -50,7 +45,6 @@ export const extractPlainText = (html: string | null | undefined): string => {
   return html.replace(/<[^>]*>/g, '').trim();
 };
 
-// ✅ Validar URL básica
 export const isValidUrl = (url: string | null | undefined): boolean => {
   if (!url) return false;
   try {
@@ -61,7 +55,6 @@ export const isValidUrl = (url: string | null | undefined): boolean => {
   }
 };
 
-// ✅ Sanitizar HTML con DOMPurify
 export const sanitizeHTML = (html: string): string => {
   if (!html || typeof html !== 'string') return '';
   
@@ -77,13 +70,11 @@ export const sanitizeHTML = (html: string): string => {
   });
 };
 
-// ✅ Validar color hex
 export const isValidHexColor = (color: string | undefined): boolean => {
   if (!color) return false;
   return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color);
 };
 
-// ✅ Obtener color seguro con fallback
 export const getSafeColor = (color: string | undefined, fallback: string): string => {
   return isValidHexColor(color) ? color! : fallback;
 };

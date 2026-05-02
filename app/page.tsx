@@ -11,7 +11,6 @@ import { sanitizeHTML } from '@/lib/sanitize';
 import ThemeDynamicProvider from '@/components/providers/ThemeDynamicProvider';
 import CalendarWidget from './CalendarWidget';
 
-// ... (interfaces se mantienen igual) ...
 interface ColorInstitucion {
   color_primario: string;
   color_secundario: string;
@@ -93,7 +92,6 @@ interface ApiData {
   };
 }
 
-//  FUNCIONES HELPER QUE FALTABAN
 const isValidHexColor = (color: string | undefined): boolean => {
   if (!color) return false;
   return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color);
@@ -117,7 +115,6 @@ const isValidResourceUrl = (url: string | undefined): boolean => {
   }
 };
 
-// ✅ NUEVA: Sanitizar texto plano
 const sanitizeTextField = (text: string | undefined, maxLength = 500): string => {
   if (!text) return '';
   return sanitizeHTML(text).replace(/<[^>]*>/g, '').trim().slice(0, maxLength);
@@ -524,7 +521,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* EVENTOS - MEJORADO */}
+        {/* EVENTOS */}
         <section className="py-16 sm:py-24 bg-gradient-to-br from-gray-50 via-white to-gray-100/50 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-96 h-96 rounded-full blur-3xl opacity-10" style={{ backgroundColor: primaryColor }} />
           <div className="absolute bottom-0 left-0 w-96 h-96 rounded-full blur-3xl opacity-10" style={{ backgroundColor: secondaryColor }} />
