@@ -6,7 +6,6 @@ export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
-// ==================== CONFIGURACIÓN DE SEGURIDAD ====================
 
 const STORAGE_DOMAINS = (process.env.NEXT_PUBLIC_ALLOWED_STORAGE_DOMAINS || '')
   .split(',')

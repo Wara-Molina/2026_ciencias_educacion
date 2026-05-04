@@ -11,10 +11,8 @@ const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN?.trim();
 if (process.env.NODE_ENV === 'development' && !API_BASE_URL) {
   console.warn('⚠️ NEXT_PUBLIC_API_BASE no configurada. Las peticiones API pueden fallar.');
   console.warn('   Agrega a tu .env.local:');
-  console.warn('   NEXT_PUBLIC_API_BASE=https://apiadministrador.upea.bo/api/v2');
 }
 
-// ==================== INSTANCIA DE AXIOS ====================
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -28,7 +26,6 @@ const api = axios.create({
   validateStatus: (status) => status >= 200 && status < 300,
 });
 
-// ==================== INTERCEPTOR DE SOLICITUD ====================
 
 api.interceptors.request.use(
   (config: any) => {
@@ -50,10 +47,6 @@ api.interceptors.request.use(
     return Promise.reject(error);
   }
 );
-
-
-
-// ==================== EXPORT ====================
 
 export default api;
 export { API_BASE_URL, API_TIMEOUT };

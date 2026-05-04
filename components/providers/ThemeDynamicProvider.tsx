@@ -44,7 +44,6 @@ export default function ThemeDynamicProvider({
   return <>{children}</>;
 }
 
-// Calcula si el texto debe ser blanco o negro según el fondo
 function calculateContrastColor(hex: string): string {
   const cleanHex = hex.replace('#', '');
   if (cleanHex.length !== 6) return '#ffffff';

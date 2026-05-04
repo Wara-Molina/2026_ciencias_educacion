@@ -38,18 +38,18 @@ const getInstitucionNombreById = (id: number): { nombre: string; iniciales: stri
       mision: 'Formación de profesionales en educación de excelencia'
     };
   }
-  if (id === 32) {
+  if (id === 18) {
     return {
-      nombre: 'Enfermería',
+      nombre: 'Artes Plásticas',
       iniciales: 'UPEA',
-      mision: 'La formación de profesionales en enfermería altamente competentes'
+      mision: 'La formación de profesionales en artes plásticas altamente competentes'
     };
   }
-  if (id === 22) {
+  if (id === 20) {
     return {
-      nombre: 'Economía',
+      nombre: 'Medicina Veterinaria',
       iniciales: 'UPEA',
-      mision: 'Formación de economistas con visión crítica y social'
+      mision: 'Formación de profesionales en medicina veterinaria de excelencia'
     };
   }
   return {

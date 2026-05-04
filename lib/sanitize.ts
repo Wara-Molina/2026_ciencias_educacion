@@ -99,6 +99,64 @@ export const sanitizeUserContent = (html: string): string => {
   });
 };
 
+export const sanitizeTextField = (
+  text: string | undefined | null, 
+  maxLength: number = 500
+): string => {
+  if (!text || typeof text !== 'string') {
+    return '';
+  }
+  
+  const withoutTags = text.replace(/<[^>]*>/g, '');
+  
+  const decoded = withoutTags
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+  
+  const withoutScripts = decoded
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+\s*=/gi, '')
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  
+  const trimmed = withoutScripts.trim();
+  
+  return trimmed.slice(0, maxLength);
+};
+
+export const sanitizeUrl = (url: string | undefined | null): string => {
+  if (!url || typeof url !== 'string') {
+    return '';
+  }
+  
+  const trimmed = url.trim();
+  
+  const allowedProtocols = ['http://', 'https://', 'mailto:', 'tel:', '/', '#'];
+  const isAllowed = allowedProtocols.some(protocol => 
+    trimmed.toLowerCase().startsWith(protocol)
+  );
+  
+  if (!isAllowed) {
+    return '';
+  }
+  
+  const dangerousPatterns = [
+    /javascript:/i,
+    /vbscript:/i,
+    /data:/i,
+    /livescript:/i,
+  ];
+  
+  if (dangerousPatterns.some(pattern => pattern.test(trimmed))) {
+    return '';
+  }
+  
+  return trimmed;
+};
+
 export const extractPlainText = (html: string): string => {
   if (typeof window === 'undefined') {
     return html.replace(/<[^>]*>/g, '').trim();
@@ -119,6 +177,18 @@ export const sanitizeHref = (href: string | null | undefined): string => {
   
   const trimmed = href.trim();
   
+  // ✅ Si parece un email, agregar mailto: automáticamente
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return `mailto:${trimmed}`;
+  }
+  
+  // ✅ Si parece un teléfono (formato internacional o local), agregar tel:
+  const phonePattern = /^\+?[0-9\s\-\(\)]{7,}$/;
+  if (phonePattern.test(trimmed) && !trimmed.startsWith('http') && !trimmed.startsWith('/')) {
+    return `tel:${trimmed.replace(/[^\d+]/g, '')}`;
+  }
+  
+  // ✅ Validar protocolos permitidos
   const allowedProtocols = [
     'http://', 'https://', 'mailto:', 'tel:', '/', '#',
   ];
@@ -128,10 +198,11 @@ export const sanitizeHref = (href: string | null | undefined): string => {
   );
   
   if (!isAllowed) {
-    console.warn(' URL bloqueada:', href);
+    console.warn('⚠️ URL bloqueada:', href);
     return '';
   }
   
+  // ✅ Bloquear patrones peligrosos
   const dangerousPatterns = [
     /javascript:/i,
     /vbscript:/i,
@@ -141,7 +212,7 @@ export const sanitizeHref = (href: string | null | undefined): string => {
   ];
   
   if (dangerousPatterns.some(pattern => pattern.test(trimmed))) {
-    console.warn('URL peligrosa bloqueada:', href);
+    console.warn('⚠️ URL peligrosa bloqueada:', href);
     return '';
   }
   
