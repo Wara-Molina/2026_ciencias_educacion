@@ -123,7 +123,7 @@ export function Navbar() {
         const institucionId = institucion?.institucion_id;
         if (!institucionId || !Number.isInteger(institucionId) || institucionId <= 0) return;
 
-        const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE;
         
         const gacetaEventosRes = await api.get(`${API_BASE_URL}/institucion/${institucionId}/gacetaEventos`);
         
@@ -486,7 +486,7 @@ export function Navbar() {
               </div>
             ) : (
               <a
-                href={process.env.NEXT_PUBLIC_SERVICIO_URL || '#'}
+                href="https://servicioadministrador.upea.bo"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group relative inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-xs overflow-hidden transition-all hover:shadow-xl hover:-translate-y-0.5 flex-shrink-0"
@@ -548,7 +548,7 @@ export function Navbar() {
                 </div>
               ) : (
                 <a
-                  href={process.env.NEXT_PUBLIC_SERVICIO_URL || '#'}
+                  href="https://servicioadministrador.upea.bo"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-full font-semibold text-sm"

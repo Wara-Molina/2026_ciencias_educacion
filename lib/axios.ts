@@ -9,7 +9,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE
 const API_TIMEOUT = parseInt(process.env.NEXT_PUBLIC_API_TIMEOUT || '10000', 10);
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN?.trim();
 if (process.env.NODE_ENV === 'development' && !API_BASE_URL) {
-  console.warn('⚠️ NEXT_PUBLIC_API_BASE no configurada. Las peticiones API pueden fallar.');
+  console.warn(' NEXT_PUBLIC_API_BASE no configurada. Las peticiones API pueden fallar.');
   console.warn('   Agrega a tu .env.local:');
 }
 

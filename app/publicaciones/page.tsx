@@ -130,31 +130,41 @@ function PublicacionesContent() {
 
   const sanitizedBusqueda = useMemo(() => sanitizeSearchQuery(busqueda), [busqueda]);
 
-  useEffect(() => {
-    let filtradas = [...publicaciones];
+useEffect(() => {
+  let filtradas = [...publicaciones];
 
-    if (categoriaActiva !== 'TODAS') {
-      filtradas = filtradas.filter(p => p.publicaciones_tipo === categoriaActiva);
-    }
+  if (categoriaActiva !== 'TODAS') {
+    filtradas = filtradas.filter(
+      p => p.publicaciones_tipo === categoriaActiva
+    );
+  }
 
-    if (sanitizedBusqueda) {
-      const query = sanitizedBusqueda.toLowerCase();
-      filtradas = filtradas.filter(p => 
+  if (sanitizedBusqueda) {
+    const query = sanitizedBusqueda.toLowerCase();
+
+    filtradas = filtradas.filter(
+      p =>
         p.publicaciones_titulo.toLowerCase().includes(query) ||
-        (p.publicaciones_descripcion?.toLowerCase().includes(query) || false) ||
-        (p.publicaciones_autor?.toLowerCase().includes(query) || false)
-      );
-    }
-    
-    setPublicacionesFiltradas(filtradas);
+        p.publicaciones_descripcion?.toLowerCase().includes(query) ||
+        p.publicaciones_autor?.toLowerCase().includes(query)
+    );
+  }
 
-    if (paginaActual > 1) {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('pagina', '1');
-      router.replace(`/publicaciones?${params.toString()}`, { scroll: false });
-    }
-  }, [sanitizedBusqueda, categoriaActiva, publicaciones, paginaActual, searchParams, router]);
+  setPublicacionesFiltradas(filtradas);
 
+}, [publicaciones, categoriaActiva, sanitizedBusqueda]);
+
+useEffect(() => {
+  const params = new URLSearchParams(searchParams.toString());
+
+  params.set('pagina', '1');
+
+  router.replace(
+    `/publicaciones?${params.toString()}`,
+    { scroll: false }
+  );
+
+}, [categoriaActiva, sanitizedBusqueda]);
   const cambiarPagina = (nuevaPagina: number) => {
     const safePagina = Number.isInteger(nuevaPagina) && nuevaPagina > 0 && nuevaPagina < 10000 ? nuevaPagina : 1;
     const params = new URLSearchParams(searchParams.toString());
