@@ -241,64 +241,74 @@ function ContactoContent() {
     <ThemeDynamicProvider colors={{ primary: primaryColor, secondary: secondaryColor, tertiary: tertiaryColor }}>
       <div className="min-h-screen bg-background">
 
-        <section className="relative py-20 overflow-hidden">
-          <div 
-            className="absolute inset-0"
-            style={{ 
-              background: `
-                linear-gradient(135deg, 
-                  ${primaryColor} 0%, 
-                  ${primaryColor}cc 25%, 
-                  ${secondaryColor}99 60%, 
-                  ${secondaryColor}44 100%
-                )
-              ` 
-            }}
-          />
-          
-          <div className="absolute inset-0 opacity-10">
-            <div 
-              className="absolute inset-0"
-              style={{
-                backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
-                backgroundSize: '40px 40px'
-              }}
-            />
-          </div>
-          
-          <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-          <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
-          
-          <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-          
-          <div className="relative max-w-6xl mx-auto px-4">
-            <Link 
-              href="/" 
-              className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-8 transition-colors group"
-            >
-              <div className="p-2 rounded-full bg-white/10 group-hover:bg-white/20 transition-colors">
-                <ArrowLeft className="w-4 h-4" />
-              </div>
-              <span className="font-medium">Volver al inicio</span>
-            </Link>
-            
-            <div className="flex items-center gap-4 mb-6">
-              <div className="p-4 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20">
-                <Mail className="w-10 h-10 text-white" />
-              </div>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white">
-                Contáctanos
-              </h1>
-            </div>
-            
-            <p className="text-lg md:text-xl text-white/90 max-w-3xl leading-relaxed">
-              Estamos aquí para ayudarte. Escríbenos, llámanos o visítanos en{' '}
-              <span className="font-semibold text-white">
-                {sanitizeText(institucion?.institucion_nombre || 'nuestra institución', 100)}
-              </span>
-            </p>
-          </div>
-        </section>
+<section className="relative py-20 overflow-hidden">
+
+  {/* Imagen de fondo */}
+  <div
+    className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+    style={{
+      backgroundImage: "url('/imagenes/imagen_upea.jpg')"
+    }}
+  />
+
+  {/* Overlay oscuro para legibilidad */}
+  <div className="absolute inset-0 bg-black/60" />
+
+  {/* Patrón decorativo */}
+  <div className="absolute inset-0 opacity-10">
+    <div
+      className="absolute inset-0"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle at 2px 2px, white 1px, transparent 0)",
+        backgroundSize: "40px 40px",
+      }}
+    />
+  </div>
+
+  {/* Efectos de luz */}
+  <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+  <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
+
+  {/* Línea inferior */}
+  <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+
+  {/* Contenido */}
+  <div className="relative max-w-6xl mx-auto px-4">
+
+    <Link
+      href="/"
+      className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-8 transition-colors group"
+    >
+      <div className="p-2 rounded-full bg-white/10 group-hover:bg-white/20 transition-colors">
+        <ArrowLeft className="w-4 h-4" />
+      </div>
+      <span className="font-medium">Volver al inicio</span>
+    </Link>
+
+    <div className="flex items-center gap-4 mb-6">
+      <div className="p-4 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20">
+        <Mail className="w-10 h-10 text-white" />
+      </div>
+
+      <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white drop-shadow-lg">
+        Contáctanos
+      </h1>
+    </div>
+
+    <p className="text-lg md:text-xl text-white/90 max-w-3xl leading-relaxed">
+      Estamos aquí para ayudarte. Escríbenos, llámanos o visítanos en{" "}
+      <span className="font-semibold text-white">
+        {sanitizeText(
+          institucion?.institucion_nombre || "nuestra institución",
+          100
+        )}
+      </span>
+    </p>
+
+  </div>
+
+</section>
 
         {/* Contenido Principal */}
         <section className="py-16 bg-background">

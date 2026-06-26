@@ -87,6 +87,43 @@ function CursosContent() {
   const secondaryColor = colores?.color_secundario || '#FC0102';
   const tertiaryColor = colores?.color_terciario || '#020733';
 
+  const getHeroBackground = () => {
+  const institucionId = Number(process.env.NEXT_PUBLIC_INSTITUCION_ID) || 12;
+
+  // ID 12 → degradado A (más simple, elegante)
+  if (institucionId === 12) {
+    return `
+      linear-gradient(135deg,
+        ${primaryColor} 0%,
+        ${primaryColor}cc 35%,
+        ${secondaryColor}88 100%
+      )
+    `;
+  }
+
+  // ID 20 → degradado B (más complejo como el tuyo)
+  if (institucionId === 20) {
+    return `
+      linear-gradient(170deg,
+        ${primaryColor} 0%,
+        ${primaryColor}cc 40%,
+        ${primaryColor}99 60%,
+        ${secondaryColor}88 78%,
+        ${secondaryColor}66 90%,
+        ${secondaryColor}44 100%
+      )
+    `;
+  }
+
+  // fallback general (equilibrado)
+  return `
+    linear-gradient(150deg,
+      ${primaryColor} 0%,
+      ${primaryColor}cc 50%,
+      ${secondaryColor}88 100%
+    )
+  `;
+};
   // ==================== FETCH DATOS ====================
   useEffect(() => {
     const fetchData = async () => {
@@ -245,40 +282,40 @@ function CursosContent() {
 
 <section className="relative py-20 overflow-hidden">
 
-  <div 
-    className="absolute inset-0"
-    style={{ 
-      background: `
-        linear-gradient(135deg, 
-          ${primaryColor} 0%, 
-          ${primaryColor}cc 25%, 
-          ${secondaryColor}99 60%, 
-          ${secondaryColor}44 100%
-        )
-      ` 
+  {/* Imagen de fondo */}
+  <div
+    className="absolute inset-0 bg-cover bg-center"
+    style={{
+      backgroundImage: "url('/imagenes/imagen_upea.jpg')"
     }}
   />
 
+  {/* Overlay oscuro */}
+  <div className="absolute inset-0 bg-black/60" />
+
+  {/* Patrón decorativo */}
   <div className="absolute inset-0 opacity-10">
-    <div 
+    <div
       className="absolute inset-0"
       style={{
-        backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
-        backgroundSize: '40px 40px'
+        backgroundImage:
+          "radial-gradient(circle at 2px 2px, white 1px, transparent 0)",
+        backgroundSize: "40px 40px",
       }}
     />
   </div>
 
+  {/* Efectos de luz */}
   <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
   <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
-  
-  {/* Línea decorativa inferior */}
+
+  {/* Línea inferior */}
   <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-  
+
   {/* Contenido */}
   <div className="relative max-w-6xl mx-auto px-4">
-    <Link 
-      href="/" 
+    <Link
+      href="/"
       className="inline-flex items-center gap-2 text-sm text-white/80 hover:text-white mb-8 transition-colors group"
     >
       <div className="p-2 rounded-full bg-white/10 group-hover:bg-white/20 transition-colors">
@@ -286,24 +323,24 @@ function CursosContent() {
       </div>
       <span className="font-medium">Volver al inicio</span>
     </Link>
-    
+
     <div className="flex items-center gap-4 mb-6">
       <div className="p-4 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/20">
         <BookOpen className="w-10 h-10 text-white" />
       </div>
+
       <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white">
         Oferta Académica
       </h1>
     </div>
-    
+
     <p className="text-lg md:text-xl text-white/90 max-w-3xl leading-relaxed">
-      Explora nuestros cursos, seminarios y talleres de{' '}
+      Explora nuestros cursos, seminarios y talleres de{" "}
       <span className="font-semibold text-white">
-        {institucion?.institucion_nombre || 'nuestra institución'}
+        {institucion?.institucion_nombre || "nuestra institución"}
       </span>
     </p>
-    
-    {/* Badge decorativo con contador */}
+
     <div className="mt-8 inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20">
       <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
       <span className="text-sm text-white/90">
@@ -311,6 +348,7 @@ function CursosContent() {
       </span>
     </div>
   </div>
+
 </section>
 
         <section className="bg-background border-b border-border py-6 sticky top-16 z-40 shadow-sm">
