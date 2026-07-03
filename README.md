@@ -29,7 +29,7 @@ Esta aplicación permite mostrar información relevante, comunicados, eventos, c
 git clone <URL-del-repositorio>
 
 # Instala las dependencias
-pnpm install
+npm install
 # o si prefieres npm
 npm install
 
@@ -37,22 +37,23 @@ npm install
 cp .env.copy .env
 
 # Inicia el entorno de desarrollo
-pnpm dev
+npm dev
 # o
-npm run dev
+pm run dev
+
 Scripts principales
-pnpm dev — Inicia el servidor en modo desarrollo
+npm dev — Inicia el servidor en modo desarrollo
 
-pnpm build — Compila la aplicación para producción
+npm build — Compila la aplicación para producción
 
-pnpm start — Inicia el servidor en producción
+npm start — Inicia el servidor en producción
 
-pnpm lint — Ejecuta el linter para verificación de código
+npm lint — Ejecuta el linter para verificación de código
 
-Variables de entorno
+# Variables de entorno
 Ajusta las variables en tu archivo .env según la carrera que vayas a desplegar.
 
-Dependencias clave
+#  Dependencias clave
 next — Framework principal con soporte nativo para .mjs
 
 react y react-dom — Librería base UI
@@ -63,7 +64,7 @@ typescript — Tipado estático para robustez del código
 
 shadcn/ui / @radix-ui/* — Componentes accesibles configurados mediante components.json
 
-Optimización y Seguridad (Next Config)
+# Optimización y Seguridad (Next Config)
 El proyecto cuenta con una configuración estricta en next.config.mjs para garantizar el rendimiento y la protección de los datos:
 
 1. Optimización de Imágenes (next/image)
@@ -84,7 +85,8 @@ X-XSS-Protection: 1; mode=block — Filtro básico contra Cross-Site Scripting.
 
 Referrer-Policy: strict-origin-when-cross-origin — Controla el envío de información de origen en peticiones de terceros.
 
-Notas adicionales
+# Notas adicionales
+
 Configuración por carrera: Para cambiar el portal entre Ciencias de la Educación y Veterinaria, solo debes comentar/descomentar el NEXT_PUBLIC_INSTITUCION_ID correspondiente en el .env y reiniciar el servidor de desarrollo.
 
 Para producción, revisa la configuración en next.config.mjs y ajusta correctamente los orígenes permitidos de las imágenes si se añaden nuevos servidores de almacenamiento.
