@@ -151,7 +151,6 @@ function CursoDetalleContent() {
       }
     } else {
       navigator.clipboard.writeText(window.location.href);
-      // Feedback seguro sin exponer datos
       alert('Enlace copiado');
     }
   };

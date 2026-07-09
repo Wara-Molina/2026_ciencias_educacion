@@ -57,7 +57,6 @@ function SedeDetalleContent() {
         setLoading(true);
         const institucionId = Number(process.env.NEXT_PUBLIC_INSTITUCION_ID) || 12;
         
-        // ✅ CORRECCIÓN: Usar rutas relativas (axios tiene baseURL configurado)
         const recursosRes = await api.get(`/institucion/${institucionId}/recursos`);
         const instRes = await api.get(`/institucionesPrincipal/${institucionId}`);
         

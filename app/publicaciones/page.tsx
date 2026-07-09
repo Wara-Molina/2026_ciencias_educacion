@@ -89,7 +89,6 @@ function PublicacionesContent() {
         setLoading(true);
         const institucionId = Number(process.env.NEXT_PUBLIC_INSTITUCION_ID) || 12;
         
-        // ✅ CORRECCIÓN: Usar rutas relativas (axios tiene baseURL configurado)
         const [publiRes, instRes] = await Promise.all([
           api.get(`/institucion/${institucionId}/recursos`),
           api.get(`/institucionesPrincipal/${institucionId}`)

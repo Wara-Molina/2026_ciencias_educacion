@@ -177,18 +177,15 @@ export const sanitizeHref = (href: string | null | undefined): string => {
   
   const trimmed = href.trim();
   
-  // ✅ Si parece un email, agregar mailto: automáticamente
   if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
     return `mailto:${trimmed}`;
   }
   
-  // ✅ Si parece un teléfono (formato internacional o local), agregar tel:
   const phonePattern = /^\+?[0-9\s\-\(\)]{7,}$/;
   if (phonePattern.test(trimmed) && !trimmed.startsWith('http') && !trimmed.startsWith('/')) {
     return `tel:${trimmed.replace(/[^\d+]/g, '')}`;
   }
   
-  // ✅ Validar protocolos permitidos
   const allowedProtocols = [
     'http://', 'https://', 'mailto:', 'tel:', '/', '#',
   ];
@@ -202,7 +199,6 @@ export const sanitizeHref = (href: string | null | undefined): string => {
     return '';
   }
   
-  // ✅ Bloquear patrones peligrosos
   const dangerousPatterns = [
     /javascript:/i,
     /vbscript:/i,

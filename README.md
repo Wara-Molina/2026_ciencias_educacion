@@ -1,12 +1,11 @@
-# Portal Web Institucional 2026
+# CIENCIAS DE LA EDUCACION  2026
 
 Proyecto web desarrollado con Next.js, TypeScript y Tailwind CSS para la gestión y difusión de información institucional, eventos, cursos y publicaciones de las carreras universitarias.
 
 ## Carreras asociadas
 
-Este sistema está modularizado y configurado mediante variables de entorno para dar soporte a las carreras de:
+Este sistema está modularizado y configurado mediante variables de entorno para dar soporte a la carrera de:
 - Ciencias de la Educación
-- Medicina Veterinaria y Zootecnia
 
 ## Descripción
 

@@ -99,7 +99,7 @@ function EventosContent() {
       try {
         setLoading(true);
         
-        // ✅ CORRECCIÓN: Usar rutas relativas (axios tiene baseURL configurado)
+      
         const [eventoRes, instRes] = await Promise.all([
           api.get(`/institucion/${institucionId}/gacetaEventos`),
           api.get(`/institucionesPrincipal/${institucionId}`)
@@ -242,7 +242,6 @@ function EventosContent() {
     }}
   />
 
-  {/* Capa oscura para mejorar lectura */}
   <div className="absolute inset-0 bg-black/60" />
 
   {/* Patrón decorativo */}

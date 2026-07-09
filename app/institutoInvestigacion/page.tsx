@@ -132,8 +132,8 @@ function InstitutoInvestigacionContent() {
             .trim()
             .toUpperCase()
             .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '') // Quitar tildes
-            .replace(/\s+/g, ' '); // Espacios únicos
+            .replace(/[\u0300-\u036f]/g, '') 
+            .replace(/\s+/g, ' ');
           
           return normalized === 'INSTITUTO DE INVESTIGACION';
         };
@@ -148,7 +148,7 @@ function InstitutoInvestigacionContent() {
             gaceta_tipo: sanitizeTextField(g.gaceta_tipo, 50)
           })) as GacetaInvestigacion[];
         
-        // ✅ Eventos: filtrar ESTRICTAMENTE
+      
         const eventosData = (gacetaEventosRes.data.upea_evento || [])
           .filter((e: any) => esTipoInvestigacion(e.tipo_evento))
           .map((e: any) => ({
@@ -162,7 +162,7 @@ function InstitutoInvestigacionContent() {
             tipo_evento: sanitizeTextField(e.tipo_evento, 50)
           })) as EventoInvestigacion[];
         
-        // ✅ Publicaciones: filtrar ESTRICTAMENTE
+   
         const publicacionesData = (recursosRes.data.upea_publicaciones || [])
           .filter((p: any) => esTipoInvestigacion(p.publicaciones_tipo))
           .map((p: any) => ({

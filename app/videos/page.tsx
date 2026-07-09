@@ -78,7 +78,6 @@ function VideosContent() {
         setLoading(true);
         setError(null);
         
-        // ✅ CORRECCIÓN: Usar rutas relativas (axios tiene baseURL configurado)
         const [videosRes, instRes] = await Promise.all([
           api.get(`/institucion/${institucionId}/contenido`),
           api.get(`/institucionesPrincipal/${institucionId}`)

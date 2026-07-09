@@ -89,8 +89,6 @@ function CursosContent() {
 
   const getHeroBackground = () => {
   const institucionId = Number(process.env.NEXT_PUBLIC_INSTITUCION_ID) || 12;
-
-  // ID 12 → degradado A (más simple, elegante)
   if (institucionId === 12) {
     return `
       linear-gradient(135deg,
@@ -101,7 +99,6 @@ function CursosContent() {
     `;
   }
 
-  // ID 20 → degradado B (más complejo como el tuyo)
   if (institucionId === 20) {
     return `
       linear-gradient(170deg,
@@ -115,7 +112,6 @@ function CursosContent() {
     `;
   }
 
-  // fallback general (equilibrado)
   return `
     linear-gradient(150deg,
       ${primaryColor} 0%,
@@ -293,7 +289,6 @@ function CursosContent() {
   {/* Overlay oscuro */}
   <div className="absolute inset-0 bg-black/60" />
 
-  {/* Patrón decorativo */}
   <div className="absolute inset-0 opacity-10">
     <div
       className="absolute inset-0"

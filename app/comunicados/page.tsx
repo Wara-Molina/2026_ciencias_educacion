@@ -178,7 +178,7 @@ function ComunicadosContent() {
         
 <section className="relative py-12 sm:py-20 overflow-hidden">
 
-  {/* Imagen de fondo */}
+
   <div
     className="absolute inset-0 bg-cover bg-center bg-no-repeat"
     style={{
@@ -186,10 +186,8 @@ function ComunicadosContent() {
     }}
   />
 
-  {/* Capa oscura para mejorar la legibilidad */}
   <div className="absolute inset-0 bg-black/60" />
 
-  {/* Patrón decorativo */}
   <div className="absolute inset-0 opacity-10">
     <div
       className="absolute inset-0"
@@ -201,14 +199,12 @@ function ComunicadosContent() {
     />
   </div>
 
-  {/* Efectos de luz */}
   <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
   <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
 
-  {/* Línea inferior */}
+  
   <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
 
-  {/* Contenido */}
   <div className="relative max-w-6xl mx-auto px-4">
     
     <Link
@@ -255,7 +251,7 @@ function ComunicadosContent() {
           <div className="max-w-6xl mx-auto px-4">
             <div className="flex flex-col gap-4">
               
-              {/* Filtros - Scroll horizontal en móvil */}
+            
               <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0 sm:overflow-visible sm:pb-0 sm:flex-wrap">
                 {tipos.map((tipo) => {
                   const isActive = tipoActivo === tipo.id;
@@ -280,7 +276,7 @@ function ComunicadosContent() {
                 })}
               </div>
 
-              {/* Búsqueda - Full width en móvil */}
+              {/* Búsqueda */}
               <div className="relative w-full">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
@@ -322,7 +318,7 @@ function ComunicadosContent() {
             </div>
           ) : (
             <>
-              {/* Grid responsive: 1 col móvil, 2 tablet, 3 desktop */}
+             
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 {comunicadosPagina.map((comunicado) => {
                   const colors = getTipoColor(comunicado.tipo_conv_comun?.tipo_conv_comun_titulo);

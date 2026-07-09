@@ -89,7 +89,6 @@ function GacetasContent() {
         setLoading(true);
         setError(null);
         
-        // ✅ CORRECCIÓN: Usar rutas relativas (axios tiene baseURL configurado)
         const [gacetaRes, instRes] = await Promise.all([
           api.get(`/institucion/${institucionId}/gacetaEventos`),
           api.get(`/institucionesPrincipal/${institucionId}`)

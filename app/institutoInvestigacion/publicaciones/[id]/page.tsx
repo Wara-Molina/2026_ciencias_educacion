@@ -98,7 +98,6 @@ function PublicacionDetalleContent() {
 
         if (!isMounted) return;
 
-        // ✅ Filtro flexible: acepta múltiples variaciones del tipo
         const esTipoInvestigacion = (valor: any): boolean => {
           if (!valor) return false;
           const normalized = String(valor).trim().toUpperCase();
@@ -109,7 +108,6 @@ function PublicacionDetalleContent() {
                  normalized === 'SOCIEDAD CIENTIFICA';
         };
 
-        // ✅ Buscar por ID + tipo, con fallback solo por ID
         const publicacionEncontrada = publiRes.data.upea_publicaciones?.find(
           (p: any) => p.publicaciones_id === publicacionId && esTipoInvestigacion(p.publicaciones_tipo)
         );

@@ -89,16 +89,13 @@ function EventoDetalleContent() {
     const fetchEvento = async () => {
       try {
         setLoading(true);
-        
-        // ✅ CORRECCIÓN: Usar rutas relativas (axios tiene baseURL configurado)
-        const [eventoRes, instRes] = await Promise.all([
+                const [eventoRes, instRes] = await Promise.all([
           api.get(`/institucion/${institucionId}/gacetaEventos`),
           api.get(`/institucionesPrincipal/${institucionId}`)
         ]);
 
         if (!isMounted) return;
 
-        // ✅ Filtro ESTRICTO con normalización robusta
         const esTipoInvestigacion = (valor: any): boolean => {
           if (!valor) return false;
           const normalized = String(valor)
@@ -110,12 +107,10 @@ function EventoDetalleContent() {
           return normalized === 'INSTITUTO DE INVESTIGACION';
         };
 
-        // ✅ Buscar evento por ID + tipo
         const eventoEncontrado = eventoRes.data.upea_evento?.find(
           (e: any) => e.evento_id === eventoId && esTipoInvestigacion(e.tipo_evento)
         );
 
-        // ✅ Fallback: buscar solo por ID si el tipo no coincide
         const eventoFallback = !eventoEncontrado 
           ? eventoRes.data.upea_evento?.find((e: any) => e.evento_id === eventoId)
           : null;

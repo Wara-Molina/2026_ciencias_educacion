@@ -67,7 +67,6 @@ function ContactoContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Estados del formulario
   const [formData, setFormData] = useState<FormData>({
     nombre: '',
     email: '',
@@ -80,7 +79,6 @@ function ContactoContent() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const lastSubmitRef = useRef<number>(0);
   
-  // Colores dinámicos
   const [primaryColor, setPrimaryColor] = useState('#04246C');
   const [secondaryColor, setSecondaryColor] = useState('#FC0102');
   const [tertiaryColor, setTertiaryColor] = useState('#020733');
@@ -243,7 +241,6 @@ function ContactoContent() {
 
 <section className="relative py-20 overflow-hidden">
 
-  {/* Imagen de fondo */}
   <div
     className="absolute inset-0 bg-cover bg-center bg-no-repeat"
     style={{
@@ -254,7 +251,6 @@ function ContactoContent() {
   {/* Overlay oscuro para legibilidad */}
   <div className="absolute inset-0 bg-black/60" />
 
-  {/* Patrón decorativo */}
   <div className="absolute inset-0 opacity-10">
     <div
       className="absolute inset-0"
@@ -266,11 +262,9 @@ function ContactoContent() {
     />
   </div>
 
-  {/* Efectos de luz */}
   <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
   <div className="absolute bottom-0 left-0 w-80 h-80 bg-white/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
 
-  {/* Línea inferior */}
   <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
 
   {/* Contenido */}
